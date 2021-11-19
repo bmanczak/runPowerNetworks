@@ -1,5 +1,6 @@
 # gym specific, we simply do a copy paste of what we did in the previous cells, wrapping it in the
 # MyEnv class, and train a Proximal Policy Optimisation based agent
+from typing import OrderedDict
 import gym
 import ray
 import gym
@@ -9,6 +10,7 @@ import grid2op
 import torch 
 import torch.nn as nn
 import logging
+import wandb
 
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.models import ModelCatalog
@@ -16,6 +18,8 @@ from ray.rllib.utils.typing import Dict, TensorType, List, ModelConfigDict
 from ray.rllib.agents import ppo  # import the type of agents
 
 from grid2op_env.grid_to_gym import create_gym_env
+from grid2op.gym_compat import GymEnv, MultiToTupleConverter
+from grid2op.Reward import L2RPNReward
 
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.models.torch.misc import SlimFC, AppendBiasLayer, \
@@ -24,19 +28,16 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.typing import Dict, TensorType, List, ModelConfigDict
 
-# nice article about Ray https://medium.com/distributed-computing-with-ray/anatomy-of-a-custom-environment-for-rllib-327157f269e5
-      
-env_config = {
-    "env_name":"rte_case14_realistic",
-    "keep_observations": ["rho", "gen_p", "load_p","p_or","p_ex","timestep_overflow",  
-                                                                      "maintenance", 
-                                                                      "topo_vect"],
-    "keep_actions": ["change_bus", "change_line_status"],
-    "convert_to_tuple": True
-}
-env_glop = grid2op.make(env_config["env_name"], test=False) 
+from ray import tune
+from ray.tune.registry import register_env
 
-class MyEnv(gym.Env):
+# nice article about Ray https://medium.com/distributed-computing-with-ray/anatomy-of-a-custom-environment-for-rllib-327157f269e5
+
+#wandb.init(project="grid2op_rlib", entity="bmanczak")
+
+
+
+class Grid_Gym(gym.Env):
     def __init__(self, env_config):
         
         self.env_gym = create_gym_env(env_name = env_config["env_name"],
@@ -44,9 +45,13 @@ class MyEnv(gym.Env):
                                         keep_actions= env_config["keep_actions"],
                                         convert_to_tuple=env_config["convert_to_tuple"])
         
-        # 4. specific to rllib
-        self.action_space = self.env_gym.action_space
-        self.observation_space = self.env_gym.observation_space
+        # First serialise as dict, then convert to Dict gym space
+        # for the sake of compatibility with Ray Tune
+        d = {k: v for k, v in self.env_gym.observation_space.items()}
+        self.observation_space = gym.spaces.Dict(d)
+
+        a = {k: v for k, v in self.env_gym.action_space.items()}
+        self.action_space = gym.spaces.Dict(a)
 
     def reset(self):
         obs = self.env_gym.reset()
@@ -64,7 +69,24 @@ class SimpleMlp(TorchModelV2, nn.Module):
     def __init__(self, obs_space: gym.spaces.Space,
                  action_space: gym.spaces.Space, num_outputs: int,
                  model_config: ModelConfigDict, name: str):
+        """
+        Initialize the model.
 
+        Parameters:
+        ----------
+        obs_space: gym.spaces.Space
+            The observation space of the environment.
+        action_space: gym.spaces.Space
+            The action space of the environment.
+        num_outputs: int
+            The number of outputs of the model.
+
+        model_config: ModelConfigDict
+            The configuration of the model as passed to the rlib trainer.
+        name: str
+            The name of the model captured in model_config["model_name"]
+        """
+        
         # Call the parent constructor.
         TorchModelV2.__init__(self, obs_space, action_space, num_outputs,
                               model_config, name)
@@ -146,33 +168,119 @@ class SimpleMlp(TorchModelV2, nn.Module):
             return self._value_branch(self._features).squeeze(1)
 
 
-
 if __name__ == "__main__":
-    #print("hehe")
-    ModelCatalog.register_custom_model("SimpleMlp", SimpleMLP)
+    
+    ModelCatalog.register_custom_model("fcn", SimpleMlp)
+    register_env("Grid_Gym", Grid_Gym)
+
     ray.init(ignore_reinit_error=True)
+
+    # Configure the model
+
     model_config = {
-            "fcnet_hiddens": [128,128],
+            "fcnet_hiddens": [128,128, 128],
             "fcnet_activation": "relu",
             "custom_model" : "fcn",
-            "custom_model_config" : {},
-
+            "custom_model_config" : {}
         }
-    model_config.get("fcnet_hiddens")
+    
+    # Configure the environment 
 
+    env_config = {
+    "env_name": "rte_case14_realistic",
+    "keep_observations": ["rho", "gen_p", "load_p","p_or","p_ex","timestep_overflow",  
+                                                                      "maintenance", 
+                                                                      "topo_vect"],
+    "keep_actions": ["change_bus", "change_line_status"],
+    "convert_to_tuple": True
+    }
 
-    try:
-        # then define a "trainer"
-        trainer = ppo.PPOTrainer(env=MyEnv, config={
-            "env_config": env_config,  # config to pass to env class,
-            #"env_config": {"env_name":"l2rpn\_case14_sandbox"}, 
-            "model" : model_config,
-            "log_level":"INFO",
-            "framework": "torch"
-        })
+    # We can now either train directly with RLib trainer or with Ray Tune
+    # The latter is preffered for logging and experimentation purposes
+
+    use_tune = False
+
+    if use_tune:
+        tune_config = {
+        "env": "Grid_Gym",
+        "env_config": env_config,  # config to pass to env class,
+        "model" : model_config,
+        "log_level":"INFO",
+        "framework": "torch",
+        "lr": tune.grid_search([0.01, 0.001, 0.0001])} # just an example
+
+        analysis = ray.tune.run(
+        ppo.PPOTrainer,
+        config=tune_config,
+        local_dir="/Users/blazejmanczak/Desktop/School/Year 2/Thesis/runPowerNetworks/log_files",
+        stop={"training_iteration": 10},
+        checkpoint_at_end=True)
+    
+
+    else: # use trainer directly 
+    
+
+        trainer = ppo.PPOTrainer(env=Grid_Gym, config={
+        "env_config": env_config,  # config to pass to env class,
+        #"env_config": {"env_name":"l2rpn\_case14_sandbox"}, 
+        "model" : model_config,
+        "log_level":"INFO",
+        "framework": "torch",
+        "rollout_fragment_length": 16,
+            "sgd_minibatch_size": 64,
+            "train_batch_size": 2048,
+
+        "vf_clip_param": 1000
+
+    })
+
         # and then train it for a given number of iteration
-        for step in range(5):
-            trainer.train()
-    finally:   
-        # shutdown ray
-        ray.shutdown()
+        for step in range(100):
+            result = trainer.train()
+            print(result["episode_len_mean"], flush = True)
+            if step % 5 == 0:
+                checkpoint = trainer.save()
+                print("checkpoint saved at", checkpoint)
+            print("-"*40, flush = True)
+    
+    #env_glop = grid2op.make(env_config["env_name"],reward_class = L2RPNReward, test=False) 
+    
+    
+    # analysis = ray.tune.run(
+    #     ppo.PPOTrainer,
+    #     config=tune_config,
+    #     local_dir="/Users/blazejmanczak/Desktop/School/Year 2/Thesis/runPowerNetworks/log_files",
+    #     stop={"training_iteration": 10},
+    #     checkpoint_at_end=True)
+         
+
+
+    #then define a "trainer"
+    # trainer = ppo.PPOTrainer(env=Grid_Gym, config={
+    #     "env_config": env_config,  # config to pass to env class,
+    #     #"env_config": {"env_name":"l2rpn\_case14_sandbox"}, 
+    #     "model" : model_config,
+    #     "log_level":"INFO",
+    #     "framework": "torch",
+    #     "rollout_fragment_length": 16,
+    #         "sgd_minibatch_size": 64,
+    #         "train_batch_size": 2048,
+
+    #     "vf_clip_param": 1000
+
+    # })
+
+    # trainer = ppo.PPOTrainer(env=MyEnv, config={
+        # #"env_config": env_config,  # config to pass to env class,
+        # "env_config": {"env_name":"rte_case14_realistic"}, 
+        # "model" : model_config,
+        # "log_level":"INFO",
+        # "framework": "torch",
+        # "rollout_fragment_length": 16,
+        #     "sgd_minibatch_size": 64,
+        #     "train_batch_size": 2048,
+
+        # "vf_clip_param": 1000
+
+        # })
+    
