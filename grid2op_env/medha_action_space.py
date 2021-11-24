@@ -362,7 +362,7 @@ def create_action_space(env,substation_ids=list(range(14))):
 
 
 if __name__ == '__main__':
-  env = grid2op.make("case14_realistic") #making the environment
+  env = grid2op.make("rte_case14_realistic") #making the environment
   num_of_subs=env.n_sub # number of substations in this grid
   #substation_ids=range(num_of_subs) #default input for create_action_space function
   nb_elements=list(env.sub_info)  #array of number of elements connected to each 
@@ -371,3 +371,6 @@ if __name__ == '__main__':
   keys=list(env.get_obj_connect_to(None,0).keys()) #keys returns the names used 
   #for all element types: e.g: 'gen_id','load_id'
   all_actions,DN_actions=create_action_space(env) #default subset is all 14 substations
+  print(len(all_actions))
+  print("-"*40)
+  print(DN_actions)

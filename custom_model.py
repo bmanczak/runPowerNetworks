@@ -10,7 +10,7 @@ import grid2op
 import torch 
 import torch.nn as nn
 import logging
-import wandb
+#import wandb
 
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.models import ModelCatalog
@@ -43,16 +43,25 @@ class Grid_Gym(gym.Env):
         self.env_gym = create_gym_env(env_name = env_config["env_name"],
                                         keep_obseravations= env_config["keep_observations"],
                                         keep_actions= env_config["keep_actions"],
-                                        convert_to_tuple=env_config["convert_to_tuple"])
+                                        convert_to_tuple=env_config["convert_to_tuple"],
+                                        act_on_single_substation=env_config["act_on_single_substation"],
+                                        medha_actions=env_config["medha_actions"])
         
         # First serialise as dict, then convert to Dict gym space
         # for the sake of compatibility with Ray Tune
         d = {k: v for k, v in self.env_gym.observation_space.items()}
         self.observation_space = gym.spaces.Dict(d)
+        
+        print("LOOK HERE", type(self.env_gym.action_space), self.env_gym.action_space)
+        if env_config["act_on_single_substation"] or env_config["medha_actions"]:
+            self.action_space = gym.spaces.Discrete(self.env_gym.action_space.n) # then already discrete
+            #self.action_space = self.env_gym.action_space
+        else:
+            a = {k: v for k, v in self.env_gym.action_space.items()}
+            self.action_space = gym.spaces.Dict(a)
 
-        a = {k: v for k, v in self.env_gym.action_space.items()}
-        self.action_space = gym.spaces.Dict(a)
 
+        
     def reset(self):
         obs = self.env_gym.reset()
         return obs
@@ -191,9 +200,14 @@ if __name__ == "__main__":
     "keep_observations": ["rho", "gen_p", "load_p","p_or","p_ex","timestep_overflow",  
                                                                       "maintenance", 
                                                                       "topo_vect"],
-    "keep_actions": ["change_bus", "change_line_status"],
-    "convert_to_tuple": True
+    #"keep_actions": ["change_bus", "change_line_status"],
+    "keep_actions": ["change_bus"],
+    "convert_to_tuple": True, # ignored if act_on_singe or medha_actions
+    "act_on_single_substation": True, # ignored if medha = True
+    "medha_actions": True
     }
+
+    #env_glop = grid2op.make(env_config["env_name"],reward_class = L2RPNReward, test=False) 
 
     # We can now either train directly with RLib trainer or with Ray Tune
     # The latter is preffered for logging and experimentation purposes
@@ -218,24 +232,26 @@ if __name__ == "__main__":
     
 
     else: # use trainer directly 
-    
-
+        
+        print("[INFO]:Using Ray Trainer directly")
         trainer = ppo.PPOTrainer(env=Grid_Gym, config={
         "env_config": env_config,  # config to pass to env class,
         #"env_config": {"env_name":"l2rpn\_case14_sandbox"}, 
         "model" : model_config,
         "log_level":"INFO",
         "framework": "torch",
-        "rollout_fragment_length": 16,
-            "sgd_minibatch_size": 64,
-            "train_batch_size": 2048,
+        "rollout_fragment_length": 16, # 16
+            "sgd_minibatch_size": 64, # 64
+            "train_batch_size": 512, #2048,
+        'num_workers':1,
 
         "vf_clip_param": 1000
 
     })
 
         # and then train it for a given number of iteration
-        for step in range(100):
+        #trainer.restore("/Users/blazejmanczak/ray_results/PPO_Grid_Gym_2021-11-24_09-43-05pypjh4z5/checkpoint_000091/checkpoint-91")
+        for step in range(1000):
             result = trainer.train()
             print(result["episode_len_mean"], flush = True)
             if step % 5 == 0:
@@ -243,7 +259,7 @@ if __name__ == "__main__":
                 print("checkpoint saved at", checkpoint)
             print("-"*40, flush = True)
     
-    #env_glop = grid2op.make(env_config["env_name"],reward_class = L2RPNReward, test=False) 
+    
     
     
     # analysis = ray.tune.run(
