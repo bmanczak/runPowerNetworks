@@ -360,6 +360,31 @@ def create_action_space(env,substation_ids=list(range(14))):
         DN_actions_indices.append(temp_index)
     return all_actions, DN_actions_indices
 
+def remove_redundant_actions(all_actions, reference_substation_indices, nb_elements ):      
+    """
+    Remove all the indices but one of the do-nothing actions/reference configs
+    (reference configs = all elements connected to busbar1)
+    for substations that have only one configuration.
+    The one reference configuration that we leave is the do-nothing action
+    for all substations (we are setting substation config that only has on config)
+
+    Args:
+        all_actions(list): A list of all grid2op actions.
+        reference_substation_indices (list]): A list contaiining the indices of
+                                            reference configurations.
+        nb_elements (list): A list containing the number of elements in each substation.
+    """
+
+    # Mask the indices that have 3 or less connected elements as they 
+    # by defintion have only one configuration
+    redundant_action_indices = np.array(reference_substation_indices)[np.argwhere(np.array(nb_elements)<=3).flatten()]
+    left_do_nothing_action = redundant_action_indices[[0]] # leave one redundant action as a do nothing action
+
+    for index in sorted(redundant_action_indices[1:], reverse=True):
+        del all_actions[index]
+
+    return all_actions, list(left_do_nothing_action)
+
 
 if __name__ == '__main__':
   env = grid2op.make("rte_case14_realistic") #making the environment
@@ -371,6 +396,9 @@ if __name__ == '__main__':
   keys=list(env.get_obj_connect_to(None,0).keys()) #keys returns the names used 
   #for all element types: e.g: 'gen_id','load_id'
   all_actions,DN_actions=create_action_space(env) #default subset is all 14 substations
+  print("Keys", keys)
+  print("NB elements", nb_elements)
   print(len(all_actions))
   print("-"*40)
   print(DN_actions)
+

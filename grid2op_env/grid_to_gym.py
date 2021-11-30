@@ -18,7 +18,7 @@ def create_gym_env(env_name = "rte_case14_realistic" , keep_obseravations = None
     """
     Create a gym environment from a grid2op environment.
 
-    Keyword arguments 1:
+    Keyword arguments:
     ----------
     env_name: str
         Name of the grid2op environment to create.
@@ -92,14 +92,15 @@ def create_gym_env(env_name = "rte_case14_realistic" , keep_obseravations = None
         if env_name != "rte_case14_realistic":
             raise NotImplementedError("Medha action space is only implemented for rte_case14_realistic")
 
-        all_actions, _ = create_action_space(env)  
+        all_actions, do_nothing_actions = create_action_space(env)  # used in the Grid_Gym converter to only get the data above the threshold
+        
         converter = IdToAct(env.action_space)  # initialize with regular the environment of the regular action space
         converter.init_converter(all_actions=all_actions) 
 
         env_gym.action_space = CustomDiscreteActions(converter = converter)
 
 
-    return env_gym
+    return env_gym, do_nothing_actions
 
 if __name__ == "__main__":
     logging.basicConfig(filename='env_create.log', filemode='w', level=logging.INFO)
