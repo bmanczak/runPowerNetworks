@@ -32,7 +32,7 @@ from ray.rllib.utils.typing import Dict, TensorType, List, ModelConfigDict
 from ray import tune
 from ray.tune.registry import register_env
 from ray.tune.integration.wandb import WandbLoggerCallback
-from dotenv import load_dotenv
+from dotenv import load_dotenv # security keys
 
 load_dotenv()
 WANDB_API_KEY = os.environ.get("WANDB_API_KEY")
@@ -48,7 +48,7 @@ from custom_policy import CustomPPOTorchPolicy
 FLOAT_MIN = -3.4e38
 FLOAT_MAX = 3.4e38
 
-logging.basicConfig(format='%(asctime)s %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p',
+logging.basicConfig(format='[INFO]: %(asctime)s %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p',
                     level=logging.INFO)
 
 class Grid_Gym(gym.Env):
@@ -64,8 +64,8 @@ class Grid_Gym(gym.Env):
         # Define parameters needed for parametric action space
         self.rho_threshold = env_config.get("rho_threshold", 0.95) - 1e-5 # used for stability in edge cases
         self.parametric_action_space = env_config["use_parametric"] and env_config["medha_actions"] and "rho" in env_config["keep_observations"]
-        logging.info(f"Using parametric action space:", self.parametric_action_space)
-        print(f"Using parametric action space:", self.parametric_action_space)
+        logging.info(f"Using parametric action space equals {self.parametric_action_space}")
+        logging.info(f"The do nothing action is {self.do_nothing_actions}")
 
         # Transform the gym action and obsrvation space that is c
         if env_config["act_on_single_substation"] or env_config["medha_actions"]:
@@ -86,10 +86,6 @@ class Grid_Gym(gym.Env):
         else:
             self.observation_space = gym.spaces.Dict(d)
 
-        print("CREATED observation space", self.observation_space)
-        #print("CREATED observation space", self.observation_space["action_mask"].shape)
-
-
 
     def update_avaliable_actions(self, mask_topo_change):
         """
@@ -101,7 +97,7 @@ class Grid_Gym(gym.Env):
         if mask_topo_change:
             self.action_mask = np.array(
                                             [0.] * self.env_gym.action_space.n, dtype=np.float32)
-            self.action_mask[0] = 1. # hack: the 0-th action is doing nothing for all configurations.
+            self.action_mask[self.do_nothing_actions] = 1. # hack: the 0-th action is doing nothing for all configurations.
         else:
             self.action_mask = np.array(
                                         [1.] * self.env_gym.action_space.n, dtype=np.float32)
@@ -204,7 +200,7 @@ class SimpleMlp(TorchModelV2, nn.Module):
         self.parametric_action_space = model_config["custom_model_config"].get("use_parametric", False)
         self.env_obs_name = model_config["custom_model_config"].get("env_obs_name", "grid")
       
-        logging.info(f"Using parametric action space:", self.parametric_action_space)
+        logging.info(f"Using parametric action space equals {self.parametric_action_space}")
        
         layers = []
         # print("THIS IS the observation space", obs_space)
