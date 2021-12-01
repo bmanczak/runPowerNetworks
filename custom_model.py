@@ -71,24 +71,44 @@ if __name__ == "__main__":
     # We can now either train directly with RLib trainer or with Ray Tune
     # The latter is preffered for logging and experimentation purposes
 
-    use_tune = False
+    use_tune = True
 
+    
     if use_tune:
-        wandb.init(project="grid2op_rlib", entity="bmanczak")
+        model_config = {
+            "fcnet_hiddens": [256,256, 256],
+            "fcnet_activation": "relu",
+            "custom_model" : "fcn",
+           "custom_model_config" : {"use_parametric": True,
+                                    "env_obs_name": "grid"}
+        }
+
         tune_config = {
         "env": "Grid_Gym",
         "env_config": env_config,  # config to pass to env class,
         "model" : model_config,
-        "log_level":"INFO",
+        "log_level":"WARN",
         "framework": "torch",
-        "lr": tune.grid_search([0.01, 0.001, 0.0001])} # just an example
+        "seed":2137,
+        "lr": tune.grid_search([1e-3, 1e-4,1e-5]),
+        "kl_coeff": tune.quniform(0.1, 0.3, 0.05),
+        "lambda": tune.quniform(0.9, 1, 0.02) ,
+        "vf_loss_coeff": tune.quniform(0.75,1.25,0.05),
+        "vf_clip_param": 1500,
+        "rollout_fragment_length": 128, # 16
+            "sgd_minibatch_size": 256, # 64
+            "train_batch_size": 1024, #2048,
+         "ignore_worker_failures": True ,# continue if a worker crashes,
+         'num_workers':8
+        } 
 
         analysis = ray.tune.run(
         ppo.PPOTrainer,
         config=tune_config,
-        local_dir="/Users/blazejmanczak/Desktop/School/Year 2/Thesis/runPowerNetworks/log_files",
-        stop={"training_iteration": 10},
+        local_dir="log_files",
+        stop={"training_iteration": 200},
         checkpoint_at_end=True,
+        num_samples = 4,
         callbacks=[WandbLoggerCallback(
                     project="grid2op",
                     api_key =  WANDB_API_KEY,
