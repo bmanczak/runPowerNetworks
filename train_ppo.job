@@ -3,7 +3,11 @@
 #SBATCH --job-name=train_ppo
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=8
-#SBATCH --time=08:00:00
+#SBATCH --time=10:00:00
+#SBATCH --gres=gpu:0
+#SBATCH --job-name=train_ppo
+#SBATCH --ntasks=1
+#SBATCH --time=09:00:00
 #SBATCH --mem=32000M
 #SBATCH --output=slurm_output_%A.out
 
