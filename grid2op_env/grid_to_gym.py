@@ -9,8 +9,84 @@ from grid2op.gym_compat import GymEnv, MultiToTupleConverter, DiscreteActSpace
 from grid2op.Reward import L2RPNReward
 from grid2op.Converter import IdToAct
 
-from grid2op_env.medha_action_space import create_action_space
+from grid2op_env.medha_action_space import create_action_space, remove_redundant_actions
 from grid2op_env.utils import CustomDiscreteActions
+
+
+class Grid_Gym(gym.Env):
+    """
+    A wrapper for the gym env required by RLLib.
+    """
+    def __init__(self, env_config):
+        
+        self.env_gym, self.do_nothing_actions = create_gym_env(env_name = env_config["env_name"],
+                                        keep_obseravations= env_config["keep_observations"],
+                                        keep_actions= env_config["keep_actions"],
+                                        convert_to_tuple=env_config["convert_to_tuple"],
+                                        act_on_single_substation=env_config["act_on_single_substation"],
+                                        medha_actions=env_config["medha_actions"])
+        
+        # Define parameters needed for parametric action space
+        self.rho_threshold = env_config.get("rho_threshold", 0.95) - 1e-5 # used for stability in edge cases
+        self.parametric_action_space = env_config["use_parametric"] and env_config["medha_actions"] and "rho" in env_config["keep_observations"]
+        logging.info(f"Using parametric action space equals {self.parametric_action_space}")
+        logging.info(f"The do nothing action is {self.do_nothing_actions}")
+
+        # Transform the gym action and obsrvation space that is c
+        if env_config["act_on_single_substation"] or env_config["medha_actions"]:
+            self.action_space = gym.spaces.Discrete(self.env_gym.action_space.n) # then already discrete
+        else:
+            # First serialise as dict, then convert to Dict gym space
+            # for the sake of compatibility with Ray Tune
+            a = {k: v for k, v in self.env_gym.action_space.items()}
+            self.action_space = gym.spaces.Dict(a)
+        
+        # Transform the observation space
+        d = {k: v for k, v in self.env_gym.observation_space.items()}
+        if self.parametric_action_space: # the actions must be discrete for this
+            self.observation_space = gym.spaces.Dict({
+                                        "action_mask" :gym.spaces.Box(0, 1, shape=(self.env_gym.action_space.n, ), dtype=np.float32),
+                                        "grid" : gym.spaces.Dict(d)})
+                                       
+        else:
+            self.observation_space = gym.spaces.Dict(d)
+
+
+    def update_avaliable_actions(self, mask_topo_change):
+        """
+        Masks the actions that change the topology of the grid.
+
+        Args:
+            mask_topo_change (bool): if True, only the do-nothing actions are not masked.
+        """
+        if mask_topo_change:
+            self.action_mask = np.array(
+                                            [0.] * self.env_gym.action_space.n, dtype=np.float32)
+            self.action_mask[self.do_nothing_actions] = 1. # hack: the 0-th action is doing nothing for all configurations.
+        else:
+            self.action_mask = np.array(
+                                        [1.] * self.env_gym.action_space.n, dtype=np.float32)
+       
+
+        
+    def reset(self):
+        obs = self.env_gym.reset()
+        if self.parametric_action_space:
+            mask_topo_change = max(obs["rho"]) > self.rho_threshold
+            self.update_avaliable_actions(mask_topo_change)
+            return {"action_mask": self.action_mask, "grid": obs}
+        return obs
+
+
+    def step(self, action):
+       
+        obs, reward, done, info = self.env_gym.step(action) 
+        if self.parametric_action_space:
+            mask_topo_change = max(obs["rho"]) > self.rho_threshold
+            self.update_avaliable_actions(mask_topo_change)
+            obs = {"action_mask": self.action_mask, "grid": obs}
+
+        return obs, reward, done, info
 
 def create_gym_env(env_name = "rte_case14_realistic" , keep_obseravations = None, keep_actions = None, 
                     scale = False, convert_to_tuple = True, act_on_single_substation  = True,
@@ -43,7 +119,7 @@ def create_gym_env(env_name = "rte_case14_realistic" , keep_obseravations = None
         Most imporant parameters are:
         - reward_class: int
 
-    Returns
+    Returns:
     -------
     env_gym: GymEnv
         The gym environment.
@@ -92,8 +168,10 @@ def create_gym_env(env_name = "rte_case14_realistic" , keep_obseravations = None
         if env_name != "rte_case14_realistic":
             raise NotImplementedError("Medha action space is only implemented for rte_case14_realistic")
 
-        all_actions, do_nothing_actions = create_action_space(env)  # used in the Grid_Gym converter to only get the data above the threshold
-        
+        all_actions_with_redundant, reference_substation_indices = create_action_space(env)  # used in the Grid_Gym converter to only get the data above the threshold
+        all_actions, do_nothing_actions = remove_redundant_actions(all_actions_with_redundant, reference_substation_indices,
+                                                                nb_elements=env.sub_info)
+
         converter = IdToAct(env.action_space)  # initialize with regular the environment of the regular action space
         converter.init_converter(all_actions=all_actions) 
 
