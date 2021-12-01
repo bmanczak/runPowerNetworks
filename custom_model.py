@@ -64,7 +64,8 @@ if __name__ == "__main__":
     "act_on_single_substation": True, # ignored if medha = True
     "medha_actions": True,
     "rho_threshold": 0,
-    "use_parametric": True 
+    "use_parametric": True ,
+    "rho_threshold": 0.9
     }
 
     # We can now either train directly with RLib trainer or with Ray Tune

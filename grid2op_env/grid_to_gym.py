@@ -1,3 +1,4 @@
+#from grid2op.Backend.PandaPowerBackend import PandaPowerBackend
 import numpy as np
 import grid2op
 import torch
@@ -72,17 +73,25 @@ class Grid_Gym(gym.Env):
     def reset(self):
         obs = self.env_gym.reset()
         if self.parametric_action_space:
-            mask_topo_change = max(obs["rho"]) > self.rho_threshold
+            mask_topo_change = max(obs["rho"]) < self.rho_threshold
             self.update_avaliable_actions(mask_topo_change)
+            # if not mask_topo_change:
+            #     print("all actions avaliable", max(obs["rho"]))
+            #     print("sum of the mask", self.action_mask)
+
             return {"action_mask": self.action_mask, "grid": obs}
         return obs
 
 
     def step(self, action):
        
-        obs, reward, done, info = self.env_gym.step(action) 
+        obs, reward, done, info = self.env_gym.step(action)
+        # if (action != 0) and (not done):
+        #     print("action", action)
+        #     print("info", info)
+        #     print("topo vect", obs["topo_vect"])
         if self.parametric_action_space:
-            mask_topo_change = max(obs["rho"]) > self.rho_threshold
+            mask_topo_change = max(obs["rho"]) < self.rho_threshold
             self.update_avaliable_actions(mask_topo_change)
             obs = {"action_mask": self.action_mask, "grid": obs}
 
