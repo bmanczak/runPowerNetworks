@@ -9,6 +9,7 @@ from grid2op.PlotGrid import PlotMatplot
 from grid2op.gym_compat import GymEnv, MultiToTupleConverter, DiscreteActSpace
 from grid2op.Reward import L2RPNReward
 from grid2op.Converter import IdToAct
+from torch.functional import meshgrid
 
 from grid2op_env.medha_action_space import create_action_space, remove_redundant_actions
 from grid2op_env.utils import CustomDiscreteActions
@@ -99,7 +100,7 @@ class Grid_Gym(gym.Env):
 
 def create_gym_env(env_name = "rte_case14_realistic" , keep_obseravations = None, keep_actions = None, 
                     scale = False, convert_to_tuple = True, act_on_single_substation  = True,
-                    medha_actions = True, seed=None, **kwargs):
+                    medha_actions = True, seed=2137, **kwargs):
     """
     Create a gym environment from a grid2op environment.
 
@@ -135,11 +136,18 @@ def create_gym_env(env_name = "rte_case14_realistic" , keep_obseravations = None
     """
 
     env = grid2op.make(env_name, reward_class = L2RPNReward, test = False, **kwargs)
-    
+    logging.info(f"Using {len(env.chronics_handler.subpaths)} chronics.")
     if seed is not None:
-        np.random.seed(seed)
-        torch.manual_seed(seed)
+        logging.info(f"Setting the env seed to {seed}")
+        # np.random.seed(seed)
+        # torch.manual_seed(seed)
         env.seed(seed)
+    if medha_actions:
+        logging.info("Using the action space and thermal limits defined by Medha!")
+        if env_name != "rte_case14_realistic":
+            raise NotImplementedError("Medha action space is only implemented for rte_case14_realistic")
+        thermal_limits = [1000,1000,1000,1000,1000,1000,1000, 760,450, 760,380,380,760,380,760,380,380,380,2000,2000]
+        env.set_thermal_limit(thermal_limits)
 
     # Convert to gym
     env_gym = GymEnv(env)
@@ -172,10 +180,7 @@ def create_gym_env(env_name = "rte_case14_realistic" , keep_obseravations = None
                     env_gym.action_space = env_gym.action_space.reencode_space(action_type, MultiToTupleConverter())
                     logging.info(f"Converted action {action_type} to tuple")
         
-    if medha_actions:
-        logging.info("Using the action space defined by Medha")
-        if env_name != "rte_case14_realistic":
-            raise NotImplementedError("Medha action space is only implemented for rte_case14_realistic")
+    if medha_actions: # add action space from medha
 
         all_actions_with_redundant, reference_substation_indices = create_action_space(env)  # used in the Grid_Gym converter to only get the data above the threshold
         all_actions, do_nothing_actions = remove_redundant_actions(all_actions_with_redundant, reference_substation_indices,
