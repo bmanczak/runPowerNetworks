@@ -131,3 +131,4 @@ dmypy.json
 # Log files
 /log_files
 /wandb
+settings.json
