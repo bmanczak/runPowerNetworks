@@ -191,6 +191,7 @@ def create_gym_env(env_name = "rte_case14_realistic" , keep_obseravations = None
                 c = 1.2 # constant to account that our max/min are underestimated
                 max_arr, min_arr = np.load(os.path.join(os.getcwd(),
                                                 "grid2op_env/scaling_arrays",
+                                                env_name,
                                                 f"{attr}.npy"))#np.load(os.path.join(os.getcwd(), "/grid2op_env/scaling_arrays/", f"{attr}.npy"))
                 env_gym.observation_space = env_gym.observation_space.\
                                             reencode_space(attr,
