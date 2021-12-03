@@ -1,18 +1,19 @@
 #from grid2op.Backend.PandaPowerBackend import PandaPowerBackend
 import numpy as np
 import grid2op
-import torch
+import os
 import logging
 import gym 
 
 from grid2op.PlotGrid import PlotMatplot 
-from grid2op.gym_compat import GymEnv, MultiToTupleConverter, DiscreteActSpace
+from grid2op.gym_compat import GymEnv, MultiToTupleConverter, DiscreteActSpace,ScalerAttrConverter
 from grid2op.Reward import L2RPNReward
 from grid2op.Converter import IdToAct
 from torch.functional import meshgrid
 
 from grid2op_env.medha_action_space import create_action_space, remove_redundant_actions
 from grid2op_env.utils import CustomDiscreteActions
+from lightsim2grid import LightSimBackend
 
 
 class Grid_Gym(gym.Env):
@@ -70,7 +71,24 @@ class Grid_Gym(gym.Env):
                                         [1.] * self.env_gym.action_space.n, dtype=np.float32)
        
 
-        
+    def obs_grid2rllib(self, g2op_obs):
+        """
+        Transforms grid2op obs to gym obs.
+        """
+        obs = self.env_gym.observation_space.to_gym(g2op_obs)
+        if self.parametric_action_space:
+            mask_topo_change = max(obs["rho"]) < self.rho_threshold
+            self.update_avaliable_actions(mask_topo_change)
+            return {"action_mask": self.action_mask, "grid": obs}
+        else:
+            return obs
+    
+    def action_rllib2grid(self, action_rllib):
+        """
+        Transform the action from rllib to grid2op.
+        """
+        return self.env_gym.action_space.from_gym(action_rllib)
+
     def reset(self):
         obs = self.env_gym.reset()
         if self.parametric_action_space:
@@ -99,7 +117,7 @@ class Grid_Gym(gym.Env):
         return obs, reward, done, info
 
 def create_gym_env(env_name = "rte_case14_realistic" , keep_obseravations = None, keep_actions = None, 
-                    scale = False, convert_to_tuple = True, act_on_single_substation  = True,
+                    scale = True, convert_to_tuple = True, act_on_single_substation  = True,
                     medha_actions = True, seed=2137, **kwargs):
     """
     Create a gym environment from a grid2op environment.
@@ -135,7 +153,7 @@ def create_gym_env(env_name = "rte_case14_realistic" , keep_obseravations = None
         The gym environment.
     """
 
-    env = grid2op.make(env_name, reward_class = L2RPNReward, test = False, **kwargs)
+    env = grid2op.make(env_name, reward_class = L2RPNReward, test = False, backend = LightSimBackend(), **kwargs)
     logging.info(f"Using {len(env.chronics_handler.subpaths)} chronics.")
     if seed is not None:
         logging.info(f"Setting the env seed to {seed}")
@@ -156,8 +174,29 @@ def create_gym_env(env_name = "rte_case14_realistic" , keep_obseravations = None
     if keep_obseravations is not None:
         env_gym.observation_space = env_gym.observation_space.keep_only_attr(keep_obseravations)
     
-    if scale: # TO-DO
-        pass
+    if scale:
+        env_gym.observation_space = env_gym.observation_space.\
+                                    reencode_space("gen_p",
+                                           ScalerAttrConverter(substract=0.,
+                                                               divide=env.gen_pmax
+                                                               ))
+        env_gym.observation_space = env_gym.observation_space.\
+                                    reencode_space("timestep_overflow",
+                                   ScalerAttrConverter(substract=0.,
+                                                       divide=grid2op.Parameters.Parameters().NB_TIMESTEP_OVERFLOW_ALLOWED # assuming no custom params
+                                    ))
+
+        for attr in ["p_ex", "p_or", "load_p"]:
+            if keep_obseravations is None or attr in keep_obseravations:
+                c = 1.2 # constant to account that our max/min are underestimated
+                max_arr, min_arr = np.load(os.path.join(os.getcwd(),
+                                                "grid2op_env/scaling_arrays",
+                                                f"{attr}.npy"))#np.load(os.path.join(os.getcwd(), "/grid2op_env/scaling_arrays/", f"{attr}.npy"))
+                env_gym.observation_space = env_gym.observation_space.\
+                                            reencode_space(attr,
+                                                ScalerAttrConverter(substract=c*max_arr,
+                                                                    divide=c*(max_arr - min_arr)
+                                                                    ))
 
     if (act_on_single_substation) and (not medha_actions):
 

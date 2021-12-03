@@ -132,3 +132,4 @@ dmypy.json
 /log_files
 /wandb
 settings.json
+/agents_log
