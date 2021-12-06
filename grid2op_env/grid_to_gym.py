@@ -22,12 +22,13 @@ class Grid_Gym(gym.Env):
     """
     def __init__(self, env_config):
         
-        self.env_gym, self.do_nothing_actions = create_gym_env(env_name = env_config["env_name"],
+        self.env_gym, self.do_nothing_actions, self.org_env = create_gym_env(env_name = env_config["env_name"],
                                         keep_obseravations= env_config["keep_observations"],
                                         keep_actions= env_config["keep_actions"],
                                         convert_to_tuple=env_config["convert_to_tuple"],
                                         act_on_single_substation=env_config["act_on_single_substation"],
-                                        medha_actions=env_config["medha_actions"])
+                                        medha_actions=env_config["medha_actions"],
+                                        scale = env_config.get("scale", False))
         
         # Define parameters needed for parametric action space
         self.rho_threshold = env_config.get("rho_threshold", 0.95) - 1e-5 # used for stability in edge cases
@@ -151,6 +152,10 @@ def create_gym_env(env_name = "rte_case14_realistic" , keep_obseravations = None
     -------
     env_gym: GymEnv
         The gym environment.
+    do_nothing_actions: list(int)
+        List of the do-nothing actions.
+    env: grid2op env
+        The original grid2op environment.
     """
 
     env = grid2op.make(env_name, reward_class = L2RPNReward, test = False, backend = LightSimBackend(), **kwargs)
@@ -232,7 +237,7 @@ def create_gym_env(env_name = "rte_case14_realistic" , keep_obseravations = None
         env_gym.action_space = CustomDiscreteActions(converter = converter)
 
 
-    return env_gym, do_nothing_actions
+    return env_gym, do_nothing_actions, env
 
 if __name__ == "__main__":
     logging.basicConfig(filename='env_create.log', filemode='w', level=logging.INFO)
