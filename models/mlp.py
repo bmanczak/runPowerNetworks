@@ -116,6 +116,9 @@ class SimpleMlp(TorchModelV2, nn.Module):
         if self.parametric_action_space:
             logits += inf_mask
         #print("logits shape", logits.shape)
+
+        if (torch.isnan(logits).any().item()) or (torch.isinf(logits).any().item()):
+            logging.warning(f"Logits contain NaN values")
         return logits, state
 
     def value_function(self) -> TensorType:
