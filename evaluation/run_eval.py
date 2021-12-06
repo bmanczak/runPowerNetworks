@@ -77,7 +77,8 @@ def run_eval(agent_type = "ppo", checkpoint_path = None, checkpoint_num = None,
         raise ValueError("Agent type not recognized. Avaliable options are 'ppo' and 'dn'")
 
     res = runner.run(nb_episode=nb_episode, 
-                 nb_process=nb_core, 
+                 nb_process=nb_core,
+                 path_save=save_path, 
                 env_seeds = [42]*nb_episode,
                 episode_id= episode_id)
 
