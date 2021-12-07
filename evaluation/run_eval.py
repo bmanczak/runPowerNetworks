@@ -1,6 +1,6 @@
 import argparse
 import os
-import os
+import numpy as np
 from re import S
 
 from grid2op.Agent import DoNothingAgent
@@ -17,7 +17,7 @@ from models.mlp import SimpleMlp
 
 def run_eval(agent_type = "ppo", checkpoint_path = None, checkpoint_num = None,
              nb_episode = 10, save_path = None, nb_core = 1,
-            episode_id = None, scale_obs = True):
+            episode_id = False, scale_obs = True, random_sample = False):
 
     """
     This function will run the evaluation of the agent.
@@ -49,6 +49,12 @@ def run_eval(agent_type = "ppo", checkpoint_path = None, checkpoint_num = None,
         ValueError: If the agent_type is not supported.
         ValueError: checkpoint_path is None and agent type is not "dn".
     """
+    np.random.seed(42)
+
+    if random_sample:
+        # make nb_episdode a random sample array of integers of size nb_episode id from 0 to 999
+        episode_id = np.random.randint(0, 1000, nb_episode)
+
     if checkpoint_path is None and agent_type != "dn":
         raise ValueError("You must specify the path to the checkpoint.")
 
@@ -58,6 +64,8 @@ def run_eval(agent_type = "ppo", checkpoint_path = None, checkpoint_num = None,
             save_path = os.path.join("runner_log", "dn")
         else:
              save_path = os.path.join("runner_log", checkpoint_path.split("/")[-1])
+        if not os.path.exists(save_path):
+            os.makedirs(save_path)
 
     agent, env_config = restore_agent(path = checkpoint_path,
                    checkpoint_num = checkpoint_num,
@@ -80,7 +88,8 @@ def run_eval(agent_type = "ppo", checkpoint_path = None, checkpoint_num = None,
                  nb_process=nb_core,
                  path_save=save_path, 
                 env_seeds = [42]*nb_episode,
-                episode_id= episode_id)
+                episode_id= episode_id,
+                pbar = True)
 
 
     for _, chron_id, cum_reward, nb_time_step, max_ts in res:
@@ -101,7 +110,7 @@ if "__main__" == __name__:
     parser.add_argument("--nb_core", type=int, default=1, help="Number of core to use")
     parser.add_argument("--episode_id", type=list, default=None, help="Id of the episode to run")
     parser.add_argument("--scale_obs", type=bool, default=True, help="Scale the observation")
-
+    parser.add_argument("--random_sample", type=bool, default=False, help="Random sample episode id")
     args = parser.parse_args()
 
     run_eval(**vars(args))
