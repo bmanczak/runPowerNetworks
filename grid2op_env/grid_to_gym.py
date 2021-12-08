@@ -200,7 +200,7 @@ def create_gym_env(env_name = "rte_case14_realistic" , keep_obseravations = None
                                                 f"{attr}.npy"))#np.load(os.path.join(os.getcwd(), "/grid2op_env/scaling_arrays/", f"{attr}.npy"))
                 env_gym.observation_space = env_gym.observation_space.\
                                             reencode_space(attr,
-                                                ScalerAttrConverter(substract=c*max_arr,
+                                                ScalerAttrConverter(substract=c*min_arr,
                                                                     divide=c*(max_arr - min_arr)
                                                                     ))
 
