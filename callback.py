@@ -79,6 +79,9 @@ class LogDistributionsCallback(DefaultCallbacks):
         """
         for obs_name, obs_val in episode.last_raw_obs_for()["grid"].items():
             episode.hist_data[obs_name] = np.array(episode.hist_data[obs_name])
+            print("obs_name", obs_name, episode.hist_data[obs_name].shape)
+            if episode.hist_data[obs_name].shape[0] == 0: # skip if hist_data is empty
+                continue # 
             for idx in range(episode.hist_data[obs_name].shape[1]): # shape[1] is the number of elements in each observation
                 episode.hist_data[f"{obs_name}_{idx}"] = episode.hist_data[obs_name][:, idx] 
                 episode.hist_data[f"{obs_name}_{idx}"] = list(episode.hist_data[f"{obs_name}_{idx}"].flatten()) # flatten the array
