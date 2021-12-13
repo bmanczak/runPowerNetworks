@@ -36,5 +36,5 @@ tune_config:
   sgd_minibatch_size: 512 # 64
   train_batch_size: 1024 #2048
   ignore_worker_failures: True # continue if a worker crashes
-  num_workers : 1 #8
+  num_workers : 4
   callbacks : LogDistributionsCallback

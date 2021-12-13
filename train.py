@@ -57,10 +57,14 @@ if __name__ == "__main__":
     parser.add_argument("--num_workers", type=int, default=1, help="Number of workers to use for training.")
     parser.add_argument("--num_samples", type=int, default=1, help="Number of samples to use for training.")
     parser.add_argument("--checkpoint_freq", type=int, default=25, help="Number of iterations between checkpoints.")
+    parser.add_argument("--group" , type=str, default=None, help="Group to use for training.")
 
     args = parser.parse_args()
 
-    logging.info("Training the agent with the following parameters:", args)
+    logging.info("Training the agent with the following parameters:")
+
+    for arg in vars(args):
+        logging.info(f"{arg.upper()}: {getattr(args, arg)}")
 
     config = preprocess_config(yaml.load(open(args.algorithm_config_path), Loader=get_loader()))["tune_config"]
 
@@ -82,6 +86,7 @@ if __name__ == "__main__":
                 num_samples = args.num_samples,
                 callbacks=[WandbLoggerCallback(
                             project=args.project_name,
+                            group = args.group,
                             api_key =  WANDB_API_KEY,
                             log_config=True)],
                 loggers= [CustomTBXLogger]

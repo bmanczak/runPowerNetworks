@@ -17,12 +17,12 @@ tune_config:
   log_level: WARN
   framework: torch
   seed : 2137
-  train_batch_size: 32
+  train_batch_size: 128
   lr: 0.0005
   optimization: 
         actor_learning_rate: 0.003 
         critic_learning_rate: 0.003
         entropy_learning_rate: 0.0003
-  learning_starts: 100
-  num_workers : 4 #8
+  learning_starts: 500
+  num_workers : 8 #8
   callbacks : LogDistributionsCallback

@@ -17,12 +17,12 @@ tune_config:
   log_level: WARN
   framework: torch
   seed : 2137
-  train_batch_size: 128
+  train_batch_size: !choice [64, 128,256]
   lr: 0.0001
   optimization: 
-        actor_learning_rate: !quniform [0.0001, 0.005, 0.0001] #0.003 
-        critic_learning_rate: !quniform [0.0001, 0.005, 0.0001]
-        entropy_learning_rate: !quniform [0.00005, 0.001, 0.0001]
-  learning_starts: 1500
-  num_workers : 4 #8
+        actor_learning_rate: !choice [0.0001, 0.001, 0.00001] #0.003 
+        critic_learning_rate: !choice [0.0001, 0.001, 0.00001]
+        entropy_learning_rate: !choice [0.0001, 0.001, 0.00001]
+  learning_starts: !choice [500,2000,5000]
+  num_workers : 10 #8
   callbacks : LogDistributionsCallback
