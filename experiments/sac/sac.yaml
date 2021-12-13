@@ -1,0 +1,28 @@
+env_config: &env_config
+  env_name: rte_case14_realistic
+  keep_actions: [change_bus]
+  keep_observations : [rho, gen_p, load_p, p_or, p_ex, timestep_overflow, maintenance , topo_vect]
+  convert_to_tuple: True # ignored if act_on_singe or medha_actions
+  act_on_single_substation: True # ignored if medha = True
+  medha_actions: True
+  rho_threshold: 0
+  use_parametric: False 
+  rho_threshold: 0.9
+  scale: True
+  run_until_threshold: True # not implemented yet
+
+tune_config:
+  env: Grid_Gym
+  env_config: *env_config  # config to pass to env class
+  log_level: WARN
+  framework: torch
+  seed : 2137
+  train_batch_size: 32
+  lr: 0.0005
+  optimization: 
+        actor_learning_rate: 0.003 
+        critic_learning_rate: 0.003
+        entropy_learning_rate: 0.0003
+  learning_starts: 100
+  num_workers : 4 #8
+  callbacks : LogDistributionsCallback

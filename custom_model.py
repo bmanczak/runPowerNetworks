@@ -4,34 +4,39 @@ import os
 import ray
 import logging
 import wandb
+import argparse
+import yaml
 
 
 from ray.rllib.models import ModelCatalog
 from ray.rllib.utils.typing import Dict, TensorType, List, ModelConfigDict
-from ray.rllib.agents import ppo  # import the type of agents
+from ray.rllib.agents import ppo, sac  # import the type of agents
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.utils.typing import Dict, TensorType, List, ModelConfigDict
 
 from ray import tune
 from ray.tune.registry import register_env
 from ray.tune.integration.wandb import WandbLoggerCallback
+from ray.tune.logger import TBXLogger
 
 from dotenv import load_dotenv # security keys
 
 from models.mlp import SimpleMlp
 from grid2op_env.grid_to_gym import Grid_Gym
+from callback import CustomTBXLogger, LogDistributionsCallback
 
+from experiments.preprocess_config import preprocess_config
 
 load_dotenv()
 WANDB_API_KEY = os.environ.get("WANDB_API_KEY")
 
-# from custom_trainer import CustomPPOTrainer
-# from custom_policy import CustomPPOTorchPolicy
 
-
-logging.basicConfig(format='[INFO]: %(asctime)s %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p',
-                    level=logging.INFO)
-
+logging.basicConfig(
+    format='[INFO]: %(asctime)s,%(msecs)d %(levelname)-8s [%(pathname)s:%(lineno)d in \
+    function %(funcName)s] %(message)s',
+    datefmt='%Y-%m-%d:%H:%M:%S',
+    level=logging.INFO
+)
 
 
 if __name__ == "__main__":
@@ -41,184 +46,57 @@ if __name__ == "__main__":
 
     ray.init(ignore_reinit_error=True)
 
-    # Configure the model
+    parser = argparse.ArgumentParser(description="Train an agent on the Grid2Op environment")
+    parser.add_argument("--algorithm", type=str, default="ppo", help="Algorithm to use", choices=["ppo", "sac"])
+    parser.add_argument("--algorithm_config_path", type=str, default="experiments/ppo/ppo_config.yaml", \
+                                                         help="Path to config file for the algorithm")
+    parser.add_argument("--use_tune", type=bool, default=True, help="Use Tune to train the agent")
+    parser.add_argument("--project_name", type=str, default="testing_callback_grid", help="Name of the to be saved in WandB")
+    parser.add_argument("--num_iters", type=int, default=1000, help="Number of iterations to train the agent for.")
+    parser.add_argument("--num_workers", type=int, default=1, help="Number of workers to use for training.")
+    parser.add_argument("--num_samples", type=int, default=1, help="Number of samples to use for training.")
+    parser.add_argument("--checkpoint_freq", type=int, default=25, help="Number of iterations between checkpoints.")
 
-    model_config = {
-            "fcnet_hiddens": [128,128, 128],
-            "fcnet_activation": "relu",
-            "custom_model" : "fcn",
-           "custom_model_config" : {"use_parametric": True,
-                                    "env_obs_name": "grid"}
-        }
+    args = parser.parse_args()
+
+    logging.info("Training the agent with the following parameters:", args)
+
+    config = preprocess_config(yaml.safe_load(open(args.algorithm_config_path)))["tune_config"]
+
+    if args.algorithm == "ppo":
+        trainer = ppo.PPOTrainer
+    elif args.algorithm == "sac":
+        trainer = sac.SACTrainer
+    else:
+        raise ValueError("Unknown algorithm. Choices are: ppo, sac")
     
-    # Configure the environment 
-
-    env_config = {
-    "env_name": "rte_case14_realistic",
-    "keep_observations": ["rho", "gen_p", "load_p","p_or","p_ex","timestep_overflow",  
-                                                                      "maintenance", 
-                                                                      "topo_vect"],
-    #"keep_actions": ["change_bus", "change_line_status"],
-    "keep_actions": ["change_bus"],
-    "convert_to_tuple": True, # ignored if act_on_singe or medha_actions
-    "act_on_single_substation": True, # ignored if medha = True
-    "medha_actions": True,
-    "rho_threshold": 0,
-    "use_parametric": True ,
-    "rho_threshold": 0.9
-    }
-
-    # We can now either train directly with RLib trainer or with Ray Tune
-    # The latter is preffered for logging and experimentation purposes
-
-    use_tune = True
-
-    
-    if use_tune:
-        model_config = {
-            "fcnet_hiddens": [256,256, 256],
-            "fcnet_activation": "relu",
-            "custom_model" : "fcn",
-           "custom_model_config" : {"use_parametric": True,
-                                    "env_obs_name": "grid"}
-        }
-
-        tune_config = {
-        "env": "Grid_Gym",
-        "env_config": env_config,  # config to pass to env class,
-        "model" : model_config,
-        "log_level":"WARN",
-        "framework": "torch",
-        "seed":2137,
-        "lr": tune.grid_search([1e-3, 1e-4,1e-5]),
-        "kl_coeff": tune.quniform(0.1, 0.3, 0.05),
-        "lambda": tune.quniform(0.9, 1, 0.02) ,
-        "vf_loss_coeff": tune.quniform(0.75,1.25,0.05),
-        "vf_clip_param": 1500,
-        "rollout_fragment_length": 128, # 16
-            "sgd_minibatch_size": 256, # 64
-            "train_batch_size": 1024, #2048,
-         "ignore_worker_failures": True ,# continue if a worker crashes,
-         'num_workers':8
-        } 
-
+    LOCAL_DIR = "log_files"
+    if args.use_tune:
         analysis = ray.tune.run(
-        ppo.PPOTrainer,
-        config=tune_config,
-        local_dir="log_files",
-        stop={"training_iteration": 500},
-        checkpoint_at_end=True,
-        num_samples = 4,
-        callbacks=[WandbLoggerCallback(
-                    project="grid2op",
-                    api_key =  WANDB_API_KEY,
-                    log_config=True)]
-        )
-
-    else: # use trainer directly 
-    
-    # Regular PPO trainer [works]
-        print("[INFO]:Using Ray Trainer directly")
-        trainer = ppo.PPOTrainer(env=Grid_Gym, config={
-        "env_config": env_config,  # config to pass to env class,
-        #"env_config": {"env_name":"l2rpn\_case14_sandbox"}, 
-        "model" : model_config,
-        "log_level":"INFO",
-        "framework": "torch",
-        "rollout_fragment_length": 16, # 16
-            "sgd_minibatch_size": 64, # 64
-            "train_batch_size": 512, #2048,
-        'num_workers':1,
-        "lr" : 1e-3,
-        "vf_clip_param": 1000
-
-    })
-
-    # Trying a custom PPO trainer [no effect]
-
-        # print("[INFO]:Using Ray Trainer directly")
-        # trainer = CustomPPOTrainer(env=Grid_Gym,
-        #     config={
-        #             "env_config": env_config,  # config to pass to env class,
-        #             #"env_config": {"env_name":"l2rpn\_case14_sandbox"}, 
-        #             "model" : model_config,
-        #             "log_level":"INFO",
-        #             "framework": "torch",
-        #             "rollout_fragment_length": 16, # 16
-        #                 "sgd_minibatch_size": 64, # 64
-        #                 "train_batch_size": 512, #2048,
-        #             'num_workers':1,
-        #             "lr" : 1e-3,
-        #             "vf_clip_param": 1000}
-        #         )
-
-        # Trying a custom PPO policy [no effect]
-        # print("[INFO]:Using Ray Trainer directly")
-        # TrainerWithCustomPolicy = ppo.PPOTrainer.with_updates(
-        #                             default_policy = CustomPPOTorchPolicy)
-        # trainer = TrainerWithCustomPolicy(env=Grid_Gym,
-        #     config={
-        #             "env_config": env_config,  # config to pass to env class,
-        #             #"env_config": {"env_name":"l2rpn\_case14_sandbox"}, 
-        #             "model" : model_config,
-        #             "log_level":"INFO",
-        #             "framework": "torch",
-        #             "rollout_fragment_length": 16, # 16
-        #                 "sgd_minibatch_size": 64, # 64
-        #                 "train_batch_size": 512, #2048,
-        #             'num_workers':1,
-        #             "lr" : 1e-3,
-        #             "vf_clip_param": 1000}
-        #         )
-
-        # and then train it for a given number of iteration
-        #trainer.restore("/Users/blazejmanczak/ray_results/PPO_Grid_Gym_2021-11-24_09-43-05pypjh4z5/checkpoint_000091/checkpoint-91")
-        for step in range(1000):
-            result = trainer.train()
+                trainer,
+                config = config,
+                local_dir= LOCAL_DIR,
+                checkpoint_freq=args.checkpoint_freq,
+                stop = {"training_iteration": args.num_iters},
+                checkpoint_at_end=True,
+                num_samples = args.num_samples,
+                callbacks=[WandbLoggerCallback(
+                            project=args.project_name,
+                            api_key =  WANDB_API_KEY,
+                            log_config=True)],
+                loggers= [CustomTBXLogger]
+                )
+    else: # use ray trainer directly
+        trainer_object = trainer(env=Grid_Gym,
+                 config=config)
+        
+        for step in range(args.num_iters):
+            result = trainer_object.train()
             print(result["episode_len_mean"], flush = True)
-            if step % 5 == 0:
-                checkpoint = trainer.save()
+            if (step+1) % args.checkpoint_freq == 0:
+                checkpoint = trainer_object.save()
                 print("checkpoint saved at", checkpoint)
             print("-"*40, flush = True)
     
-    
-    
-    
-    # analysis = ray.tune.run(
-    #     ppo.PPOTrainer,
-    #     config=tune_config,
-    #     local_dir="/Users/blazejmanczak/Desktop/School/Year 2/Thesis/runPowerNetworks/log_files",
-    #     stop={"training_iteration": 10},
-    #     checkpoint_at_end=True)
-         
 
-
-    #then define a "trainer"
-    # trainer = ppo.PPOTrainer(env=Grid_Gym, config={
-    #     "env_config": env_config,  # config to pass to env class,
-    #     #"env_config": {"env_name":"l2rpn\_case14_sandbox"}, 
-    #     "model" : model_config,
-    #     "log_level":"INFO",
-    #     "framework": "torch",
-    #     "rollout_fragment_length": 16,
-    #         "sgd_minibatch_size": 64,
-    #         "train_batch_size": 2048,
-
-    #     "vf_clip_param": 1000
-
-    # })
-
-    # trainer = ppo.PPOTrainer(env=MyEnv, config={
-        # #"env_config": env_config,  # config to pass to env class,
-        # "env_config": {"env_name":"rte_case14_realistic"}, 
-        # "model" : model_config,
-        # "log_level":"INFO",
-        # "framework": "torch",
-        # "rollout_fragment_length": 16,
-        #     "sgd_minibatch_size": 64,
-        #     "train_batch_size": 2048,
-
-        # "vf_clip_param": 1000
-
-        # })
     

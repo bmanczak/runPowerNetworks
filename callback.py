@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 import matplotlib
 import io
 import logging
+import torch
 
 from ray.rllib.agents.callbacks import DefaultCallbacks
 from ray.rllib.env import BaseEnv
@@ -60,7 +61,13 @@ class LogDistributionsCallback(DefaultCallbacks):
             "after env reset!"
 
         # Save each observation for further processing.
-        for obs_name, obs_val in episode.last_raw_obs_for()["grid"].items():
+
+        if "grid" in episode.last_raw_obs_for().keys():
+            last_row_obs = episode.last_raw_obs_for()["grid"]
+        else: # non parametric model
+            last_row_obs = episode.last_raw_obs_for()
+        
+        for obs_name, obs_val in last_row_obs.items():
             if obs_name not in episode.hist_data:
                 episode.hist_data[obs_name] = []
             else:
@@ -77,9 +84,16 @@ class LogDistributionsCallback(DefaultCallbacks):
         This allows us to track the distribution of each observation and 
         each line/generator/load in the episode.
         """
-        for obs_name, obs_val in episode.last_raw_obs_for()["grid"].items():
+
+        if "grid" in episode.last_raw_obs_for().keys():
+            
+            last_row_obs = episode.last_raw_obs_for()["grid"]
+        else: # non parametric model
+            last_row_obs = episode.last_raw_obs_for()
+
+        for obs_name, obs_val in last_row_obs.items():
             episode.hist_data[obs_name] = np.array(episode.hist_data[obs_name])
-            print("obs_name", obs_name, episode.hist_data[obs_name].shape)
+            #print("obs_name", obs_name, episode.hist_data[obs_name].shape)
             if episode.hist_data[obs_name].shape[0] == 0: # skip if hist_data is empty
                 continue # 
             for idx in range(episode.hist_data[obs_name].shape[1]): # shape[1] is the number of elements in each observation
@@ -94,7 +108,10 @@ class LogDistributionsCallback(DefaultCallbacks):
         Log the action distribution and extra information about the observation.
         Note that everything in result[something] is logged by Ray.
         """
+        if torch.is_tensor(train_batch["actions"]): # for ppo it's numpy, for sac it's tensor
+            train_batch["actions"] = train_batch["actions"].numpy()
         num_non_zero_actions = np.sum(train_batch["actions"] != 0)
+        
 
         # Log the proportion of actions that do not change the topology
         result["prop_topo_action_change"] = num_non_zero_actions/train_batch["actions"].shape[0]

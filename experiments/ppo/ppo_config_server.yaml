@@ -1,0 +1,40 @@
+model_config: &model_config
+  fcnet_hiddens: [256,256,256]
+  fcnet_activation: relu
+  custom_model : fcn
+  custom_model_config : 
+    use_parametric: True
+    env_obs_name: grid
+                         
+env_config: &env_config
+  env_name: rte_case14_realistic
+  keep_actions: [change_bus]
+  keep_observations : [rho, gen_p, load_p, p_or, p_ex, timestep_overflow, maintenance , topo_vect]
+  convert_to_tuple: True # ignored if act_on_singe or medha_actions
+  act_on_single_substation: True # ignored if medha = True
+  medha_actions: True
+  rho_threshold: 0
+  use_parametric: True 
+  rho_threshold: 0.9
+  scale: True
+  obs_above_threshold: False
+
+
+tune_config:
+  env: Grid_Gym
+  env_config: *env_config  # config to pass to env class
+  model : *model_config
+  log_level: WARN
+  framework: torch
+  seed : 2137
+  lr: 0.001 #tune.grid_search([1e-3 1e-41e-5])
+  kl_coeff: 0.2 #tune.quniform(0.1 0.3 0.05)
+  lambda: 0.96 #tune.quniform(0.9 1 0.02) 
+  vf_loss_coeff: 0.85 #tune.quniform(0.751.250.05)
+  vf_clip_param: 1500
+  rollout_fragment_length: 256 # 16
+  sgd_minibatch_size: 1024 # 64
+  train_batch_size: 2048 #2048
+  ignore_worker_failures: True # continue if a worker crashes
+  num_workers : 8
+  callbacks : LogDistributionsCallback
