@@ -4,6 +4,7 @@ import grid2op
 import os
 import logging
 import gym 
+import time
 
 from grid2op.PlotGrid import PlotMatplot 
 from grid2op.gym_compat import GymEnv, MultiToTupleConverter, DiscreteActSpace,ScalerAttrConverter
@@ -35,6 +36,11 @@ class Grid_Gym(gym.Env):
         self.parametric_action_space = env_config["use_parametric"] and env_config["medha_actions"] and "rho" in env_config["keep_observations"]
         logging.info(f"Using parametric action space equals {self.parametric_action_space}")
         logging.info(f"The do nothing action is {self.do_nothing_actions}")
+
+        self.run_until_threshold = env_config.get("run_until_threshold", False)
+        if self.run_until_threshold and self.parametric_action_space:
+            logging.warning("run_until_threshold is not compatible with parametric action space. Setting run_until_threshold to False")
+            self.run_until_threshold = False
 
         # Transform the gym action and obsrvation space that is c
         if env_config["act_on_single_substation"] or env_config["medha_actions"]:
@@ -100,6 +106,20 @@ class Grid_Gym(gym.Env):
             #     print("sum of the mask", self.action_mask)
 
             return {"action_mask": self.action_mask, "grid": obs}
+
+        elif self.run_until_threshold:
+            done = False
+            self.steps = 0
+            # print("Entering the loop")
+            #start = time.time()
+            while (max(obs["rho"]) < self.rho_threshold) and (not done):
+                obs, _, done, _ = self.env_gym.step(self.do_nothing_actions[0])
+                self.steps += 1
+            # print("Exiting the loop. Total time", time.time() - start)
+            # print("Time spent in the loop", self.steps)
+            # print("Is done?", done)
+            # if not done:
+            #     print("Max rho", max(obs["rho"]))
         return obs
 
 
@@ -114,6 +134,14 @@ class Grid_Gym(gym.Env):
             mask_topo_change = max(obs["rho"]) < self.rho_threshold
             self.update_avaliable_actions(mask_topo_change)
             obs = {"action_mask": self.action_mask, "grid": obs}
+
+        elif self.run_until_threshold:
+            self.begin_step = self.steps
+            while (max(obs["rho"]) < self.rho_threshold) and (not done):
+                obs, reward, done, info = self.env_gym.step(self.do_nothing_actions[0])
+                self.steps += 1
+            # print(f"Action {action} enabled {self.steps - self.begin_step} steps", flush=True)
+            reward = (self.steps - self.begin_step)/100
 
         return obs, reward, done, info
 
