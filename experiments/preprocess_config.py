@@ -38,7 +38,8 @@ def tune_search_quniform_constructor(loader, node):
     """
     vals = []
     for scalar_node in node.value:
-        vals.append(float(scalar_node.value))
+        val = float_to_integer(float(scalar_node.value))
+        vals.append(val)
     return tune.quniform(vals[0], vals[1], vals[2])
 
 def tune_search_grid_search_constructor(loader, node):
@@ -48,7 +49,8 @@ def tune_search_grid_search_constructor(loader, node):
     """
     vals = []
     for scalar_node in node.value:
-        vals.append(float(scalar_node.value))
+        val = float_to_integer(float(scalar_node.value))
+        vals.append(val)
     return tune.grid_search(vals)
 
 def tune_choice_constructor(loader, node):
@@ -58,7 +60,8 @@ def tune_choice_constructor(loader, node):
     """
     vals = []
     for scalar_node in node.value:
-        vals.append(float(scalar_node.value))
+        val = float_to_integer(float(scalar_node.value))
+        vals.append(val)
     return tune.choice(vals)
     
 def get_loader():
@@ -68,3 +71,9 @@ def get_loader():
   loader.add_constructor("!grid_search", tune_search_grid_search_constructor)
   loader.add_constructor("!choice", tune_choice_constructor)
   return loader
+
+def float_to_integer(float_value):
+    if float_value.is_integer():
+        return int(float_value)
+    else:
+        return float_value
