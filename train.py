@@ -25,7 +25,7 @@ from models.mlp import SimpleMlp
 from grid2op_env.grid_to_gym import Grid_Gym
 from callback import CustomTBXLogger, LogDistributionsCallback
 
-from experiments.preprocess_config import preprocess_config
+from experiments.preprocess_config import preprocess_config, get_loader
 
 load_dotenv()
 WANDB_API_KEY = os.environ.get("WANDB_API_KEY")
@@ -38,6 +38,7 @@ logging.basicConfig(
     level=logging.INFO
 )
 
+LOCAL_DIR = "log_files"
 
 if __name__ == "__main__":
     
@@ -61,7 +62,7 @@ if __name__ == "__main__":
 
     logging.info("Training the agent with the following parameters:", args)
 
-    config = preprocess_config(yaml.safe_load(open(args.algorithm_config_path)))["tune_config"]
+    config = preprocess_config(yaml.load(open(args.algorithm_config_path), Loader=get_loader()))["tune_config"]
 
     if args.algorithm == "ppo":
         trainer = ppo.PPOTrainer
@@ -70,7 +71,6 @@ if __name__ == "__main__":
     else:
         raise ValueError("Unknown algorithm. Choices are: ppo, sac")
     
-    LOCAL_DIR = "log_files"
     if args.use_tune:
         analysis = ray.tune.run(
                 trainer,
