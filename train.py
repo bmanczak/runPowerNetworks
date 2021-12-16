@@ -6,6 +6,9 @@ import logging
 import wandb
 import argparse
 import yaml
+import random
+import numpy as np
+import torch 
 
 
 from ray.rllib.models import ModelCatalog
@@ -41,7 +44,9 @@ logging.basicConfig(
 LOCAL_DIR = "log_files"
 
 if __name__ == "__main__":
-    
+    random.seed(2137)
+    np.random.seed(2137)
+    torch.manual_seed(2137)
     ModelCatalog.register_custom_model("fcn", SimpleMlp)
     register_env("Grid_Gym", Grid_Gym)
     ray.shutdown()
