@@ -44,8 +44,8 @@ if __name__ == "__main__":
     
     ModelCatalog.register_custom_model("fcn", SimpleMlp)
     register_env("Grid_Gym", Grid_Gym)
-
-    ray.init(ignore_reinit_error=True)
+    ray.shutdown()
+    ray.init(ignore_reinit_error=False)
 
     parser = argparse.ArgumentParser(description="Train an agent on the Grid2Op environment")
     parser.add_argument("--algorithm", type=str, default="ppo", help="Algorithm to use", choices=["ppo", "sac"])
@@ -89,8 +89,11 @@ if __name__ == "__main__":
                             group = args.group,
                             api_key =  WANDB_API_KEY,
                             log_config=True)],
-                loggers= [CustomTBXLogger]
+                loggers= [CustomTBXLogger],
+                keep_checkpoints_num = 3,
+                checkpoint_score_attr="episode_len_mean"
                 )
+        ray.shutdown()
     else: # use ray trainer directly
         trainer_object = trainer(env=Grid_Gym,
                  config=config)
