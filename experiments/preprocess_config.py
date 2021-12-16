@@ -60,7 +60,12 @@ def tune_choice_constructor(loader, node):
     """
     vals = []
     for scalar_node in node.value:
-        val = float_to_integer(float(scalar_node.value))
+        if scalar_node.value == "True":
+            val = True
+        elif scalar_node.value == "False":
+            val = False
+        else: 
+            val = float_to_integer(float(scalar_node.value))
         vals.append(val)
     return tune.choice(vals)
     

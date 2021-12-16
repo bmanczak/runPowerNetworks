@@ -14,6 +14,7 @@ from torch.functional import meshgrid
 
 from grid2op_env.medha_action_space import create_action_space, remove_redundant_actions
 from grid2op_env.utils import CustomDiscreteActions
+from grid2op_env.rewards import ScaledL2RPNReward
 from lightsim2grid import LightSimBackend
 
 
@@ -38,6 +39,8 @@ class Grid_Gym(gym.Env):
         logging.info(f"The do nothing action is {self.do_nothing_actions}")
 
         self.run_until_threshold = env_config.get("run_until_threshold", False)
+        self.reward_scaling_factor = env_config.get("reward_scaling_factor", 1) # useful for SAC
+        self.log_reward = env_config.get("log_reward", False) # useful for SAC
         if self.run_until_threshold and self.parametric_action_space:
             logging.warning("run_until_threshold is not compatible with parametric action space. Setting run_until_threshold to False")
             self.run_until_threshold = False
@@ -115,21 +118,12 @@ class Grid_Gym(gym.Env):
             while (max(obs["rho"]) < self.rho_threshold) and (not done):
                 obs, _, done, _ = self.env_gym.step(self.do_nothing_actions[0])
                 self.steps += 1
-            # print("Exiting the loop. Total time", time.time() - start)
-            # print("Time spent in the loop", self.steps)
-            # print("Is done?", done)
-            # if not done:
-            #     print("Max rho", max(obs["rho"]))
         return obs
 
 
     def step(self, action):
        
         obs, reward, done, info = self.env_gym.step(action)
-        # if (action != 0) and (not done):
-        #     print("action", action)
-        #     print("info", info)
-        #     print("topo vect", obs["topo_vect"])
         if self.parametric_action_space:
             mask_topo_change = max(obs["rho"]) < self.rho_threshold
             self.update_avaliable_actions(mask_topo_change)
@@ -137,12 +131,15 @@ class Grid_Gym(gym.Env):
 
         elif self.run_until_threshold:
             self.begin_step = self.steps
+            cum_reward = 0
             while (max(obs["rho"]) < self.rho_threshold) and (not done):
+                cum_reward += reward
                 obs, reward, done, info = self.env_gym.step(self.do_nothing_actions[0])
                 self.steps += 1
-            # print(f"Action {action} enabled {self.steps - self.begin_step} steps", flush=True)
-            reward = (self.steps - self.begin_step)/100
-
+            #reward = ((self.steps - self.begin_step)/100)*50 # experiment for sac
+            reward = cum_reward*self.reward_scaling_factor 
+            if self.log_reward:
+                reward = np.log2(max(1,reward))
         return obs, reward, done, info
 
 def create_gym_env(env_name = "rte_case14_realistic" , keep_obseravations = None, keep_actions = None, 
@@ -186,7 +183,7 @@ def create_gym_env(env_name = "rte_case14_realistic" , keep_obseravations = None
         The original grid2op environment.
     """
 
-    env = grid2op.make(env_name, reward_class = L2RPNReward, test = False, backend = LightSimBackend(), **kwargs)
+    env = grid2op.make(env_name, reward_class = ScaledL2RPNReward, test = False, backend = LightSimBackend(), **kwargs)
     logging.info(f"Using {len(env.chronics_handler.subpaths)} chronics.")
     if seed is not None:
         logging.info(f"Setting the env seed to {seed}")
