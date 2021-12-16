@@ -18,13 +18,13 @@ from ray import tune
 from ray.tune.registry import register_env
 from ray.tune.integration.wandb import WandbLoggerCallback
 from ray.tune.logger import TBXLogger
+from ray.tune import CLIReporter
 
 from dotenv import load_dotenv # security keys
 
 from models.mlp import SimpleMlp
 from grid2op_env.grid_to_gym import Grid_Gym
 from callback import CustomTBXLogger, LogDistributionsCallback
-
 from experiments.preprocess_config import preprocess_config, get_loader
 
 load_dotenv()
@@ -76,8 +76,11 @@ if __name__ == "__main__":
         raise ValueError("Unknown algorithm. Choices are: ppo, sac")
     
     if args.use_tune:
+        # Limit the number of rows.
+        reporter = CLIReporter()
         analysis = ray.tune.run(
                 trainer,
+                progress_reporter = reporter,
                 config = config,
                 local_dir= LOCAL_DIR,
                 checkpoint_freq=args.checkpoint_freq,
