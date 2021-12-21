@@ -58,6 +58,8 @@ import grid2op
 import numpy as np
 import itertools as it
 
+from typing import List, Tuple
+
 def create_dictionary(combs,sub_elem): 
     """ To create action in the form of dictionary for this particular 
     input combination for this list of elements
@@ -187,7 +189,7 @@ def create_dictionary(combs,sub_elem):
     # create the dictionary as "set_bus": dictionary to feed as input to 
     # the grid2op method of "action_space"
     action=action_space({"set_bus":act_dict})
-    return action
+    return action, act_dict # act_dict mot used, but useful for debigging
 
 def check_gamma(combinations):
   """This function is used to remove element combinations for 
@@ -215,10 +217,63 @@ def return_DN_actions_indices(all_actions):
       (also called the "do-nothing actions")"""
   return (len(all_actions) - 1)
   
+def get_obj_connect_to_subtation(sub_items : List[Tuple['str',np.array]], 
+                                 disable_line: int = -1) -> \
+                                Tuple[List[str], int]:
+    '''
+    Returns the objects connected to a subtation.
+    Parameters
+    ----------
+    sub_items : List['str',np.array]
+        The list of tuples of object types. Each tuple consists of a
+        string representing he object type and and array with the indexes
+        of the connected object of that type.
+        Also contains an entry with string 'nb_elements'.
+    disable_line : int, optional
+        The index of the line to be disabled. The default is -1.
+    Returns
+    -------
+    sub_elem : List[str]
+        String representations of the objects
+    sub_nb_elem : int
+        Total number of connected objects.
+    '''
+    sub_elem = []
+    #sub_nb_elem is the number of elements conncted to this particular substation
+    for k,v in sub_items:
+        #this loop is to create a list of all elements connected 
+        #to a single substation
+        #example: k='lines_or_id' and v=array([2, 3, 4]
+            if k=='nb_elements': #there is a key in this dictionary called 
+            # "nb_elements" which we don't want 
+            # because we only want to list the names of the elements itself
+                continue
+            
+            #Added by Matthijs on nov 18 2021:
+            #Disable the line if it is to be disabled
+            if k in ('lines_or_id','lines_ex_id'):
+                if disable_line in v:
+                    v =  np.delete(v, np.where(v == disable_line))
+                    
+            
+            
+            if np.size(v)>1: #number of elements with key k connected to sub_id
+                for j in range(np.size(v)):
+                    str1 = k + str(v[j])
+                    sub_elem.append(str1)
+                    # example: str1 = 'lines_or_id' + str(2)
+            elif np.size(v)==1:
+                sub_elem.append(str(k)+str(v[0])) 
+    # By the end of the above loop, sub_elem will be complete
 
-def create_action_space(env,substation_ids=list(range(14))):
+    sub_nb_elem= len(sub_elem)
+    return sub_elem, sub_nb_elem   
+
+
+def create_action_space(env,substation_ids=list(range(14)), disable_line = -1):
     """ This function will produce a list of all actions possible for the 
     substations identified in substation_ids.
+
     - substations_id is a list of the ids of the substations that are in scope.
     - sub_id is the id of a substation.
     - sub_elem is a list that contains all the elements connected to a 
@@ -226,8 +281,13 @@ def create_action_space(env,substation_ids=list(range(14))):
     - all_actions is a list that will contain a list of all actions for all 
     substations in substation_ids. 
     - also returns a list of indices of the all_actions list which are 
-    do-nothing actions. """
+    do-nothing actions.
     
+    Update 21.12:
+    disable_line: liintst, Optional
+        A line to be disabled. If -1 none of the lines are disabled.
+     """
+        
     nb_elements=list(env.sub_info)  #array of number of elements connected to each 
                                      #substation 
     global keys
@@ -236,28 +296,20 @@ def create_action_space(env,substation_ids=list(range(14))):
     action_space=env.action_space #defining action space
     keys=list(env.get_obj_connect_to(None,0).keys()) #keys returns the names used
     all_actions=[]
+    all_actions_dict = [] # amass the dictionary representations of the actions here
     DN_actions_indices = []
     temp_index = 0
     for sub_id in substation_ids: # to loop through all substations
         print("SUBSTATION NUMBER: %d" % sub_id)
-        sub_elem=[] 
-        sub_nb_elem=nb_elements[sub_id] 
-        #sub_nb_elem is the number of elements conncted to this particular substation
-        for k,v in env.get_obj_connect_to(None, sub_id).items():
-            #this loop is to create a list of all elements connected 
-            #to a single substation
-            #example: k='lines_or_id' and v=array([2, 3, 4]
-                if k=='nb_elements': #there is a key in this dictionary called 
-                # "nb_elements" which we don't want 
-                # because we only want to list the names of the elements itself
-                    continue
-                if np.size(v)>1: #number of elements with key k connected to sub_id
-                    for j in range(np.size(v)):
-                        str1 = k + str(v[j])
-                        sub_elem.append(str1)
-                        # example: str1 = 'lines_or_id' + str(2)
-                elif np.size(v)==1:
-                    sub_elem.append(str(k)+str(v[0])) 
+        sub_elem, sub_nb_elem = get_obj_connect_to_subtation(env.get_obj_connect_to(None, sub_id).items(),
+                                                            disable_line)
+
+        #Due to line removal, object can now be connected by only a single line (i.e. removal of line 18).
+        #This is illegal, and hence throws an exception.
+        if sub_nb_elem<2:
+                raise Exception('Network has illegal state: this is likely due to removing ' +
+                                'a powerline connected to a subtation with only two connected objects.')
+
         # By the end of the above loop, sub_elem will be complete
         # Below, we now start to fill the all_actions list
         # there are two cases:
@@ -290,8 +342,9 @@ def create_action_space(env,substation_ids=list(range(14))):
                 for each in combs:
                 # this is the loop to create the action for a particular 
                 # combination
-                        single_action=create_dictionary(each,sub_elem)
+                        single_action,single_action_dict=create_dictionary(each,sub_elem)
                         all_actions.append(single_action)
+                        all_actions_dict.append(single_action_dict)
         else: # if it is an even number
             r=int(sub_nb_elem/2)  # To choose half of total space
             for j in range(r,sub_nb_elem+1): 
@@ -310,8 +363,9 @@ def create_action_space(env,substation_ids=list(range(14))):
                     # number of possibilities. This is done below.
                     combs=combs[0:int(len(combs)/2)]
                     for each in combs:
-                        single_action=create_dictionary(each,sub_elem)
+                        single_action,single_action_dict=create_dictionary(each,sub_elem)
                         all_actions.append(single_action)
+                        all_actions_dict.append(single_action_dict)
                 elif(j==int(sub_nb_elem/2) and sub_id==2): #gamma term hardcoding
                     combs=combs[0:int(len(combs)/2)]
                     # these substrings are hard coded to exclude the 
@@ -322,8 +376,9 @@ def create_action_space(env,substation_ids=list(range(14))):
                         if sub_string1 in elem and sub_string2 in elem:
                             combs.remove(elem)
                     for each in combs:
-                        single_action=create_dictionary(each,sub_elem)
+                        single_action,single_action_dict=create_dictionary(each,sub_elem)
                         all_actions.append(single_action)
+                        all_actions_dict.append(single_action_dict)
                     
                 elif(j==4) and (sub_id==1): # for gamma term hardcoding
                     # these substrings are hard coded to exclude the 
@@ -334,8 +389,9 @@ def create_action_space(env,substation_ids=list(range(14))):
                         if (sub_string1 not in elem) and (sub_string2 not in elem):
                             combs.remove(elem)
                     for each in combs:
-                        single_action=create_dictionary(each,sub_elem)
+                        single_action,single_action_dict=create_dictionary(each,sub_elem)
                         all_actions.append(single_action)
+                        all_actions_dict.append(single_action_dict)
                     
                 elif(j==4) and (sub_id==5): #gamma term hardcoding
                     # these substrings are hard coded to exclude the 
@@ -346,18 +402,21 @@ def create_action_space(env,substation_ids=list(range(14))):
                         if (sub_string1 not in elem) and (sub_string2 not in elem):
                             combs.remove(elem)
                     for each in combs:
-                        single_action=create_dictionary(each,sub_elem)
+                        single_action,single_action_dict=create_dictionary(each,sub_elem)
                         all_actions.append(single_action)
+                        all_actions_dict.append(single_action_dict)
                     
                 else:
                     # this case is for all other cases not described above
                     combs=list(it.combinations(sub_elem, j))
                     for each in combs:
-                        single_action=create_dictionary(each,sub_elem)
+                        single_action,single_action_dict=create_dictionary(each,sub_elem)
                         all_actions.append(single_action)
-                    
+                        all_actions_dict.append(single_action_dict)
+        #print("len of dict all_actions_dict: ", len(all_actions_dict))    
         temp_index = return_DN_actions_indices(all_actions);
         DN_actions_indices.append(temp_index)
+    print("len all actions", len(all_actions))
     return all_actions, DN_actions_indices
 
 def remove_redundant_actions(all_actions, reference_substation_indices, nb_elements ):      
@@ -395,7 +454,8 @@ if __name__ == '__main__':
   action_space=env.action_space #defining action space
   keys=list(env.get_obj_connect_to(None,0).keys()) #keys returns the names used 
   #for all element types: e.g: 'gen_id','load_id'
-  all_actions,DN_actions=create_action_space(env) #default subset is all 14 substations
+  all_actions,DN_actions=create_action_space(env, disable_line=17) #default subset is all 14 substations
+
   print("Keys", keys)
   print("NB elements", nb_elements)
   print(len(all_actions))

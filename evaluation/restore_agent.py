@@ -3,10 +3,10 @@ import re
 import json
 import os
 
-from ray.rllib.agents import ppo  # import the type of agents
+from ray.rllib.agents import ppo, sac # import the type of agents
 from grid2op_env.grid_to_gym import Grid_Gym
 
-def restore_agent(path, checkpoint_num = None, modify_keys = None, return_env_config = True):
+def restore_agent(path, checkpoint_num = None, modify_keys = None, return_env_config = True, trainer_type = "ppo"):
     """
     Function that restores the agent from tune checkpointwith 
     correct hyperparameters.
@@ -26,6 +26,8 @@ def restore_agent(path, checkpoint_num = None, modify_keys = None, return_env_co
         Keys to add/change in the config.
     return_env_config: bool (Optional)
         If True, returns the env_config.
+    trainer_type: str (Optional)
+        Type of trainer to use. "ppo" and "sac" are supported.
     
     Returns:
     --------
@@ -46,6 +48,7 @@ def restore_agent(path, checkpoint_num = None, modify_keys = None, return_env_co
     """
 
     config_params = json.load(open(os.path.join(path, "params.json")))
+    config_params.pop("callbacks", None)
     env_config = config_params["env_config"]
     # Optionally modify the keys 
     if modify_keys is not None:
@@ -68,8 +71,13 @@ def restore_agent(path, checkpoint_num = None, modify_keys = None, return_env_co
     checkpoint_path = os.path.join(path,f"checkpoint_{str(0)*(6-len(str(checkpoint_num)))}{checkpoint_num}", \
                       f"checkpoint-{checkpoint_num}")
     print(f"Restoring checkpoint {checkpoint_num} from {checkpoint_path}")
-    agent = ppo.PPOTrainer(env=Grid_Gym,
-        config = config_params)
+
+    if trainer_type == "ppo":
+        agent = ppo.PPOTrainer(env=Grid_Gym,
+            config = config_params)
+    elif trainer_type == "sac":
+        agent = sac.SACTrainer(env=Grid_Gym,
+            config = config_params)
 
     agent.restore(checkpoint_path);
 

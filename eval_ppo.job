@@ -1,11 +1,10 @@
 #!/bin/bash
 
-#SBATCH --job-name=train_ppo
+#SBATCH --job-name=eval_ppo
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
 #SBATCH --time=10:00:00
 #SBATCH --gres=gpu:0
-#SBATCH --job-name=train_ppo
 #SBATCH --ntasks=1
 #SBATCH --time=08:00:00
 #SBATCH --mem=32000M

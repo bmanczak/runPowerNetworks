@@ -10,14 +10,64 @@ from grid2op.PlotGrid import PlotMatplot
 from grid2op.gym_compat import GymEnv, MultiToTupleConverter, DiscreteActSpace,ScalerAttrConverter
 from grid2op.Reward import L2RPNReward
 from grid2op.Converter import IdToAct
-from torch.functional import meshgrid
+from grid2op.gym_compat.gym_obs_space import GymObservationSpace
+from grid2op.gym_compat.gym_act_space import GymActionSpace
+from grid2op.gym_compat.utils import check_gym_version
 
 from grid2op_env.medha_action_space import create_action_space, remove_redundant_actions
 from grid2op_env.utils import CustomDiscreteActions
 from grid2op_env.rewards import ScaledL2RPNReward
 from lightsim2grid import LightSimBackend
+ 
 
 
+
+class CustomGymEnv(GymEnv):
+    """
+    fully implements the openAI gym API by using the :class:`GymActionSpace` and :class:`GymObservationSpace`
+    for compliance with openAI gym.
+
+    They can handle action_space_converter or observation_space converter to change the representation of data
+    that will be fed to the agent.
+
+    Notes
+    ------
+    The environment passed as input is copied. It is not modified by this "gym environment"
+
+    Examples
+    --------
+    This can be used like:
+
+    .. code-block:: python
+
+        import grid2op
+        from grid2op.gym_compat import GymEnv
+
+        env_name = ...
+        env = grid2op.make(env_name)
+        gym_env = GymEnv(env)  # is a gym environment properly inheriting from gym.Env !
+    """
+    def __init__(self, env_init, disable_line = -1):
+        super().__init__(env_init)
+        self.disable_line = disable_line 
+     
+    def reset(self):
+        if self.disable_line == -1:
+            g2op_obs = self.init_env.reset()
+        else:
+            
+            done = True
+            i = -1
+            while done:
+                g2op_obs = self.init_env.reset()
+                g2op_obs, _, done, info = self.init_env.step(self.init_env.action_space(
+                                    {"set_line_status":(self.disable_line,-1) } ))
+                i += 1
+            if i!= 0:
+                logging.info("Had to skip {} times to get a valid observation".format(i))
+        
+        gym_obs = self.observation_space.to_gym(g2op_obs)
+        return gym_obs
 class Grid_Gym(gym.Env):
     """
     A wrapper for the gym env required by RLLib.
@@ -30,7 +80,8 @@ class Grid_Gym(gym.Env):
                                         convert_to_tuple=env_config["convert_to_tuple"],
                                         act_on_single_substation=env_config["act_on_single_substation"],
                                         medha_actions=env_config["medha_actions"],
-                                        scale = env_config.get("scale", False))
+                                        scale = env_config.get("scale", False),
+                                        disable_line = env_config.get("disable_line", -1))
         
         # Define parameters needed for parametric action space
         self.rho_threshold = env_config.get("rho_threshold", 0.95) - 1e-5 # used for stability in edge cases
@@ -41,6 +92,8 @@ class Grid_Gym(gym.Env):
         self.run_until_threshold = env_config.get("run_until_threshold", False)
         self.reward_scaling_factor = env_config.get("reward_scaling_factor", 1) # useful for SAC
         self.log_reward = env_config.get("log_reward", False) # useful for SAC
+
+        self.disable_line = env_config.get("disable_line", -1)
         if self.run_until_threshold and self.parametric_action_space:
             logging.warning("run_until_threshold is not compatible with parametric action space. Setting run_until_threshold to False")
             self.run_until_threshold = False
@@ -144,7 +197,7 @@ class Grid_Gym(gym.Env):
 
 def create_gym_env(env_name = "rte_case14_realistic" , keep_obseravations = None, keep_actions = None, 
                     scale = True, convert_to_tuple = True, act_on_single_substation  = True,
-                    medha_actions = True, seed=2137, **kwargs):
+                    medha_actions = True, seed=2137, disable_line = -1, **kwargs):
     """
     Create a gym environment from a grid2op environment.
 
@@ -168,6 +221,8 @@ def create_gym_env(env_name = "rte_case14_realistic" , keep_obseravations = None
         If True, act_on_single_substation, keep_actions and act_on_single_substation are ignored. 
     seed: int
         Seed used to initialize the environment.
+    disable_line: int
+        If not -1, the line with the given id is disabled.
     **kwargs:
         All the parameters of the grid2op environment.
         Most imporant parameters are:
@@ -198,7 +253,7 @@ def create_gym_env(env_name = "rte_case14_realistic" , keep_obseravations = None
         env.set_thermal_limit(thermal_limits)
 
     # Convert to gym
-    env_gym = GymEnv(env)
+    env_gym = CustomGymEnv(env, disable_line=disable_line)
     logging.info("Environment successfully converted to Gym")
 
     if keep_obseravations is not None:
@@ -252,7 +307,7 @@ def create_gym_env(env_name = "rte_case14_realistic" , keep_obseravations = None
         
     if medha_actions: # add action space from medha
 
-        all_actions_with_redundant, reference_substation_indices = create_action_space(env)  # used in the Grid_Gym converter to only get the data above the threshold
+        all_actions_with_redundant, reference_substation_indices = create_action_space(env, disable_line = disable_line)  # used in the Grid_Gym converter to only get the data above the threshold
         all_actions, do_nothing_actions = remove_redundant_actions(all_actions_with_redundant, reference_substation_indices,
                                                                 nb_elements=env.sub_info)
 
