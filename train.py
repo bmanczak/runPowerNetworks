@@ -87,6 +87,7 @@ if __name__ == "__main__":
                 trainer,
                 progress_reporter = reporter,
                 config = config,
+                name = args.group,
                 local_dir= LOCAL_DIR,
                 checkpoint_freq=args.checkpoint_freq,
                 stop = {"training_iteration": args.num_iters},
@@ -98,8 +99,9 @@ if __name__ == "__main__":
                             api_key =  WANDB_API_KEY,
                             log_config=True)],
                 loggers= [CustomTBXLogger],
-                keep_checkpoints_num = 3,
-                checkpoint_score_attr="episode_len_mean"
+                keep_checkpoints_num = 5,
+                checkpoint_score_attr="episode_len_mean",
+                verbose = 2
                 )
         ray.shutdown()
     else: # use ray trainer directly
