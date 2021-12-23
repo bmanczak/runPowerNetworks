@@ -1,7 +1,7 @@
 from numpy import save
 import yaml
 from grid2op_env.grid_to_gym import Grid_Gym
-from callback import LogDistributionsCallback
+from experiments.callback import LogDistributionsCallback
 from ray import tune
 
 mapper = {

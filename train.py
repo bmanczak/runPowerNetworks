@@ -28,7 +28,7 @@ from dotenv import load_dotenv # security keys
 
 from models.mlp import SimpleMlp
 from grid2op_env.grid_to_gym import Grid_Gym
-from callback import CustomTBXLogger, LogDistributionsCallback
+from experiments.callback import CustomTBXLogger, LogDistributionsCallback
 from experiments.preprocess_config import preprocess_config, get_loader
 from experiments.stopper import MaxNotImprovedStopper
 
