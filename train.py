@@ -22,6 +22,7 @@ from ray.tune.registry import register_env
 from ray.tune.integration.wandb import WandbLoggerCallback
 from ray.tune.logger import TBXLogger
 from ray.tune import CLIReporter
+from ray.tune.stopper import CombinedStopper, MaximumIterationStopper
 
 from dotenv import load_dotenv # security keys
 
@@ -29,6 +30,7 @@ from models.mlp import SimpleMlp
 from grid2op_env.grid_to_gym import Grid_Gym
 from callback import CustomTBXLogger, LogDistributionsCallback
 from experiments.preprocess_config import preprocess_config, get_loader
+from experiments.stopper import MaxNotImprovedStopper
 
 load_dotenv()
 WANDB_API_KEY = os.environ.get("WANDB_API_KEY")
@@ -83,13 +85,17 @@ if __name__ == "__main__":
     if args.use_tune:
         # Limit the number of rows.
         reporter = CLIReporter()
+        stopper = CombinedStopper(
+            MaximumIterationStopper(max_iter = args.num_iters),
+            MaxNotImprovedStopper(metric = "episode_reward_mean")
+        )
         analysis = ray.tune.run(
                 trainer,
                 progress_reporter = reporter,
                 config = config,
                 local_dir= LOCAL_DIR,
                 checkpoint_freq=args.checkpoint_freq,
-                stop = {"training_iteration": args.num_iters},
+                stop = stopper,
                 checkpoint_at_end=True,
                 num_samples = args.num_samples,
                 callbacks=[WandbLoggerCallback(
