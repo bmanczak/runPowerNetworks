@@ -32,9 +32,9 @@ class MaxNotImprovedStopper(Stopper):
 
     def __init__(self,
                  metric: str,
-                 num_iters_no_improvement: int = 25,
-                 percent_improve: float = 0.01, # 1 percent improvement needed
-                 grace_period: int = 100,
+                 num_iters_no_improvement: int = 40,
+                 percent_improve: float = 0.001, # 0.1 percent improvement needed
+                 grace_period: int = 200,
                  metric_threshold: Optional[float] = None,
                  mode: Optional[str] = None):
 
@@ -83,6 +83,7 @@ class MaxNotImprovedStopper(Stopper):
         if self._num_iters_no_improvement < self._iters_no_improvement:
             logger.info(f"Terminating the trial early with max value of {self._metric}: {self._current_max}")
             return True 
+        return False # if else, return false 
 
     def stop_all(self):
         return False
