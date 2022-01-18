@@ -32,9 +32,9 @@ class MaxNotImprovedStopper(Stopper):
 
     def __init__(self,
                  metric: str,
-                 num_iters_no_improvement: int = 40,
+                 num_iters_no_improvement: int = 100,
                  percent_improve: float = 0.001, # 0.1 percent improvement needed
-                 grace_period: int = 200,
+                 grace_period: int = 400,
                  metric_threshold: Optional[float] = None,
                  mode: Optional[str] = None):
 

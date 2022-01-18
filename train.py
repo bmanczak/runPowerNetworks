@@ -65,6 +65,10 @@ if __name__ == "__main__":
     parser.add_argument("--num_samples", type=int, default=1, help="Number of samples to use for training.")
     parser.add_argument("--checkpoint_freq", type=int, default=25, help="Number of iterations between checkpoints.")
     parser.add_argument("--group" , type=str, default=None, help="Group to use for training.")
+    parser.add_argument("--resume", type=bool, default=False, help="Resume training from a checkpoint. If yes, group must be specified.")
+    parser.add_argument("--grace_period", type = int, default = 400, help = "Minimum number of timesteps before a trial can be early stopped.")
+    parser.add_argument("--num_iters_no_improvement", type = int, default = 200, help = "Minimum number of timesteps before a trial can be early stopped.")
+
 
     args = parser.parse_args()
 
@@ -87,8 +91,11 @@ if __name__ == "__main__":
         reporter = CLIReporter()
         stopper = CombinedStopper(
             MaximumIterationStopper(max_iter = args.num_iters),
-            MaxNotImprovedStopper(metric = "episode_reward_mean")
-        )
+            MaxNotImprovedStopper(metric = "episode_reward_mean",
+                                    grace_period = args.grace_period, 
+                                    num_iters_no_improvement = args.num_iters_no_improvement)
+                                    )
+        
         analysis = ray.tune.run(
                 trainer,
                 progress_reporter = reporter,
@@ -107,7 +114,8 @@ if __name__ == "__main__":
                 loggers= [CustomTBXLogger],
                 keep_checkpoints_num = 5,
                 checkpoint_score_attr="episode_len_mean",
-                verbose = 2
+                verbose = 2,
+                resume = args.resume
                 )
         ray.shutdown()
     else: # use ray trainer directly
