@@ -18,6 +18,7 @@ from grid2op_env.medha_action_space import create_action_space, remove_redundant
 from grid2op_env.utils import CustomDiscreteActions
 from grid2op_env.rewards import ScaledL2RPNReward
 from lightsim2grid import LightSimBackend
+from gym.spaces import Box # needed for adding connectivity matrix
  
 
 
@@ -74,14 +75,15 @@ class Grid_Gym(gym.Env):
     """
     def __init__(self, env_config):
         
-        self.env_gym, self.do_nothing_actions, self.org_env = create_gym_env(env_name = env_config["env_name"],
+        self.env_gym, self.do_nothing_actions, self.org_env, self.all_actions_dict = create_gym_env(env_name = env_config["env_name"],
                                         keep_obseravations= env_config["keep_observations"],
                                         keep_actions= env_config["keep_actions"],
                                         convert_to_tuple=env_config["convert_to_tuple"],
                                         act_on_single_substation=env_config["act_on_single_substation"],
                                         medha_actions=env_config["medha_actions"],
                                         scale = env_config.get("scale", False),
-                                        disable_line = env_config.get("disable_line", -1))
+                                        disable_line = env_config.get("disable_line", -1),
+                                        conn_matrix = env_config.get("conn_matrix", False))
         
         # Define parameters needed for parametric action space
         self.rho_threshold = env_config.get("rho_threshold", 0.95) - 1e-5 # used for stability in edge cases
@@ -197,7 +199,7 @@ class Grid_Gym(gym.Env):
 
 def create_gym_env(env_name = "rte_case14_realistic" , keep_obseravations = None, keep_actions = None, 
                     scale = True, convert_to_tuple = True, act_on_single_substation  = True,
-                    medha_actions = True, seed=2137, disable_line = -1, **kwargs):
+                    medha_actions = True, seed=2137, disable_line = -1, conn_matrix = False, **kwargs):
     """
     Create a gym environment from a grid2op environment.
 
@@ -223,6 +225,8 @@ def create_gym_env(env_name = "rte_case14_realistic" , keep_obseravations = None
         Seed used to initialize the environment.
     disable_line: int
         If not -1, the line with the given id is disabled.
+    conn_matrix: bool
+        If True, the connectivity matrix will be added to each observation.
     **kwargs:
         All the parameters of the grid2op environment.
         Most imporant parameters are:
@@ -283,7 +287,15 @@ def create_gym_env(env_name = "rte_case14_realistic" , keep_obseravations = None
                                                 ScalerAttrConverter(substract=c*min_arr,
                                                                     divide=c*(max_arr - min_arr)
                                                                     ))
-
+    if conn_matrix:
+        shape_ = (env.dim_topo, env.dim_topo)
+        env_gym.observation_space.add_key("connectivity_matrix",
+                                  lambda obs: obs.connectivity_matrix(),
+                                  Box(shape=shape_,
+                                      low=np.zeros(shape_),
+                                      high=np.ones(shape_),
+                                    )
+                                  )
     if (act_on_single_substation) and (not medha_actions):
 
         if keep_actions is not None:
@@ -307,9 +319,12 @@ def create_gym_env(env_name = "rte_case14_realistic" , keep_obseravations = None
         
     if medha_actions: # add action space from medha
 
-        all_actions_with_redundant, reference_substation_indices = create_action_space(env, disable_line = disable_line)  # used in the Grid_Gym converter to only get the data above the threshold
-        all_actions, do_nothing_actions = remove_redundant_actions(all_actions_with_redundant, reference_substation_indices,
-                                                                nb_elements=env.sub_info)
+        all_actions_with_redundant, reference_substation_indices, all_actions_dict_with_redundant = create_action_space(
+                                                                                                    env,
+                                                                                                    disable_line = disable_line,
+                                                                                                    return_actions_dict=True)  # used in the Grid_Gym converter to only get the data above the threshold
+        all_actions, do_nothing_actions, all_actions_dict = remove_redundant_actions(all_actions_with_redundant, reference_substation_indices,
+                                                                nb_elements=env.sub_info, all_actions_dict= all_actions_dict_with_redundant)
 
         converter = IdToAct(env.action_space)  # initialize with regular the environment of the regular action space
         converter.init_converter(all_actions=all_actions) 
@@ -317,7 +332,7 @@ def create_gym_env(env_name = "rte_case14_realistic" , keep_obseravations = None
         env_gym.action_space = CustomDiscreteActions(converter = converter)
 
 
-    return env_gym, do_nothing_actions, env
+    return env_gym, do_nothing_actions, env, all_actions_dict
 
 if __name__ == "__main__":
     logging.basicConfig(filename='env_create.log', filemode='w', level=logging.INFO)
