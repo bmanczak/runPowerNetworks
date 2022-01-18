@@ -270,7 +270,7 @@ def get_obj_connect_to_subtation(sub_items : List[Tuple['str',np.array]],
     return sub_elem, sub_nb_elem   
 
 
-def create_action_space(env,substation_ids=list(range(14)), disable_line = -1):
+def create_action_space(env,substation_ids=list(range(14)), disable_line = -1, return_actions_dict = False):
     """ This function will produce a list of all actions possible for the 
     substations identified in substation_ids.
 
@@ -286,6 +286,10 @@ def create_action_space(env,substation_ids=list(range(14)), disable_line = -1):
     Update 21.12:
     disable_line: liintst, Optional
         A line to be disabled. If -1 none of the lines are disabled.
+
+    Update 17.01.2022:
+    return_actions_dict: bool, optional
+        If True, additionally returns a list of dictionaries defining the actions.
      """
         
     nb_elements=list(env.sub_info)  #array of number of elements connected to each 
@@ -413,13 +417,18 @@ def create_action_space(env,substation_ids=list(range(14)), disable_line = -1):
                         single_action,single_action_dict=create_dictionary(each,sub_elem)
                         all_actions.append(single_action)
                         all_actions_dict.append(single_action_dict)
-        #print("len of dict all_actions_dict: ", len(all_actions_dict))    
+        
+        #print("len of dict all_actions_dict: ", len(all_actions_dict.keys()))    
         temp_index = return_DN_actions_indices(all_actions);
         DN_actions_indices.append(temp_index)
-    print("len all actions", len(all_actions))
-    return all_actions, DN_actions_indices
+    # print("all_actions dict: ",all_actions_dict[-1])
+    # print("len all actions", len(all_actions))
+    if return_actions_dict:
+        return all_actions, DN_actions_indices, all_actions_dict
+    else:
+        return all_actions, DN_actions_indices
 
-def remove_redundant_actions(all_actions, reference_substation_indices, nb_elements ):      
+def remove_redundant_actions(all_actions, reference_substation_indices, nb_elements, all_actions_dict = None):      
     """
     Remove all the indices but one of the do-nothing actions/reference configs
     (reference configs = all elements connected to busbar1)
@@ -432,6 +441,7 @@ def remove_redundant_actions(all_actions, reference_substation_indices, nb_eleme
         reference_substation_indices (list]): A list contaiining the indices of
                                             reference configurations.
         nb_elements (list): A list containing the number of elements in each substation.
+        all_actions_dict (list): A list containing dictionaries defining each action.
     """
 
     # Mask the indices that have 3 or less connected elements as they 
@@ -439,10 +449,15 @@ def remove_redundant_actions(all_actions, reference_substation_indices, nb_eleme
     redundant_action_indices = np.array(reference_substation_indices)[np.argwhere(np.array(nb_elements)<=3).flatten()]
     left_do_nothing_action = redundant_action_indices[[0]] # leave one redundant action as a do nothing action
 
-    for index in sorted(redundant_action_indices[1:], reverse=True):
+    for index in sorted(redundant_action_indices[1:], reverse=True): # [1:] assumes the 0th action is the do-nothing action
         del all_actions[index]
+        if all_actions_dict is not None:
+            del all_actions_dict[index]
 
-    return all_actions, list(left_do_nothing_action)
+    if all_actions_dict is not None:
+        return all_actions, list(left_do_nothing_action), all_actions_dict
+    else:
+        return all_actions, list(left_do_nothing_action)
 
 
 if __name__ == '__main__':
@@ -454,8 +469,7 @@ if __name__ == '__main__':
   action_space=env.action_space #defining action space
   keys=list(env.get_obj_connect_to(None,0).keys()) #keys returns the names used 
   #for all element types: e.g: 'gen_id','load_id'
-  all_actions,DN_actions=create_action_space(env, disable_line=17) #default subset is all 14 substations
-
+   
   print("Keys", keys)
   print("NB elements", nb_elements)
   print(len(all_actions))
