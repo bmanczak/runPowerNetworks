@@ -137,3 +137,6 @@ settings.json
 
 # SLURM outputs
 *.out
+
+#Job files
+*.job
