@@ -3,9 +3,8 @@
 #SBATCH --job-name=train_sac
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=10
-#SBATCH --time=00:10:00
+#SBATCH --time=16:00:00
 #SBATCH --gres=gpu:0
-#SBATCH --job-name=train_ppo
 #SBATCH --mem=32000M
 #SBATCH --output=slurm_output_%A.out
 
@@ -22,10 +21,10 @@ source activate rlib_grid
 python train.py --algorithm sac \
                 --algorithm_config_path experiments/sac/sac_param_search.yaml \
                 --use_tune True \
-                --project_name "testing_callback_grid" \
-                --num_iters 400 \
+                --project_name "grid2op" \
+                --num_iters 1500 \
                 --num_workers 10 \
-                --num_samples 6 \
+                --num_samples 2 \
                 --checkpoint_freq 20 \
                 --group "SAC_in_env" 
 

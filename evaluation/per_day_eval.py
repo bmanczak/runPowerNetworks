@@ -157,6 +157,8 @@ if __name__ == '__main__':
     do_nothing_capacity_threshold = env_config.get("rho_threshold",0.9)
     disable_line = env_config.get("disable_line", -1)
 
+    print("-"*50, "\n")
+    print(f"Evaluation of model with disabled line {disable_line} and model path {args.model_path} ")
     if env_config["use_parametric"]:
         wrapped_agent = AgentFromGym(rllib_env, agent)
     else:
