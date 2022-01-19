@@ -156,6 +156,8 @@ if __name__ == '__main__':
     do_nothing_capacity_threshold = env_config.get("rho_threshold",0.9)
     disable_line = env_config.get("disable_line", -1)
 
+    print("-"*50, "\n")
+    print(f"Evaluation of model with disabled line {disable_line} and model path {args.model_path} ")
     if env_config["use_parametric"]:
         wrapped_agent = AgentFromGym(rllib_env, agent)
     else:
@@ -226,8 +228,8 @@ if __name__ == '__main__':
                 total_days += 1
                 info = skip_to_next_day(env, num, disable_line)
                 #day_records = empty_records(obs_vect_size)
-        print(f"Percentage of days comleted {round(total_days_completed/total_days, 3)} after {num_chronics} chronics.")
-    print("Finised.")
+        print(f"Percentage of days comleted {round(total_days_completed/total_days, 3)} after {num} chronics.", flush = True)
+    print("Finised!", flush = True)
         # logger.info whether game was completed succesfully, save days' records if so
     logger.info('Chronic exhausted! \n\n\n')
     #ray.shutdown()
