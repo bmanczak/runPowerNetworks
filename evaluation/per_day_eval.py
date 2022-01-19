@@ -140,13 +140,14 @@ if __name__ == '__main__':
                         choices=["sac", 'ppo'], required = False, default = "sac")
     parser.add_argument("--num_chronics", help="The number of chronics to use.", type = int,
                         required = False, default = 10)
+    parser.add_argument("--checkpoint_num", default= None, type = int, help = "The checkpoint number to restore.")
     args = parser.parse_args()
 
     agent, env_config = restore_agent( 
                     path = args.model_path,
                    return_env_config = True, # disabled lines
                    trainer_type=args.agent_type,
-                   )
+                   checkpoint_num = args.checkpoint_num)
 
     rllib_env = Grid_Gym(env_config);
 
@@ -226,7 +227,7 @@ if __name__ == '__main__':
                 total_days += 1
                 info = skip_to_next_day(env, num, disable_line)
                 #day_records = empty_records(obs_vect_size)
-        print(f"Percentage of days comleted {round(total_days_completed/total_days, 3)} after {num_chronics} chronics.")
+        print(f"Percentage of days comleted {round(total_days_completed/total_days, 3)} after {num-start_chronic_id + 1} chronics.")
     print("Finised.")
         # logger.info whether game was completed succesfully, save days' records if so
     logger.info('Chronic exhausted! \n\n\n')

@@ -19,6 +19,7 @@ from grid2op_env.utils import CustomDiscreteActions
 from grid2op_env.rewards import ScaledL2RPNReward
 from lightsim2grid import LightSimBackend
 from gym.spaces import Box # needed for adding connectivity matrix
+from configurations import ROOT_DIR
  
 
 
@@ -278,7 +279,7 @@ def create_gym_env(env_name = "rte_case14_realistic" , keep_obseravations = None
         for attr in ["p_ex", "p_or", "load_p"]:
             if keep_obseravations is None or attr in keep_obseravations:
                 c = 1.2 # constant to account that our max/min are underestimated
-                max_arr, min_arr = np.load(os.path.join(os.getcwd(),
+                max_arr, min_arr = np.load(os.path.join(ROOT_DIR,
                                                 "grid2op_env/scaling_arrays",
                                                 env_name,
                                                 f"{attr}.npy"))#np.load(os.path.join(os.getcwd(), "/grid2op_env/scaling_arrays/", f"{attr}.npy"))
