@@ -428,7 +428,8 @@ def create_action_space(env,substation_ids=list(range(14)), disable_line = -1, r
     else:
         return all_actions, DN_actions_indices
 
-def remove_redundant_actions(all_actions, reference_substation_indices, nb_elements, all_actions_dict = None):      
+def remove_redundant_actions(all_actions, reference_substation_indices, nb_elements,
+                             all_actions_dict = None, remove_all_redundant_actions = False):      
     """
     Remove all the indices but one of the do-nothing actions/reference configs
     (reference configs = all elements connected to busbar1)
@@ -442,6 +443,8 @@ def remove_redundant_actions(all_actions, reference_substation_indices, nb_eleme
                                             reference configurations.
         nb_elements (list): A list containing the number of elements in each substation.
         all_actions_dict (list): A list containing dictionaries defining each action.
+        remove_all_redundant_actions (bool): If True, remove all the redundant actions. Else,
+            leave one redundant action.
     """
 
     # Mask the indices that have 3 or less connected elements as they 
@@ -449,7 +452,8 @@ def remove_redundant_actions(all_actions, reference_substation_indices, nb_eleme
     redundant_action_indices = np.array(reference_substation_indices)[np.argwhere(np.array(nb_elements)<=3).flatten()]
     left_do_nothing_action = redundant_action_indices[[0]] # leave one redundant action as a do nothing action
 
-    for index in sorted(redundant_action_indices[1:], reverse=True): # [1:] assumes the 0th action is the do-nothing action
+    start_id_to_remove = 0 if remove_all_redundant_actions else 1 # optionally leave one redundant action as a do nothing action
+    for index in sorted(redundant_action_indices[start_id_to_remove:], reverse=True): # [1:] assumes the 0th action is the do-nothing action
         del all_actions[index]
         if all_actions_dict is not None:
             del all_actions_dict[index]
