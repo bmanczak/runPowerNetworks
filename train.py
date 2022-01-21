@@ -27,7 +27,7 @@ from ray.tune.stopper import CombinedStopper, MaximumIterationStopper
 from dotenv import load_dotenv # security keys
 
 from models.mlp import SimpleMlp
-from grid2op_env.grid_to_gym import Grid_Gym
+from grid2op_env.grid_to_gym import Grid_Gym, Grid_Gym_Greedy
 from experiments.callback import CustomTBXLogger, LogDistributionsCallback
 from experiments.preprocess_config import preprocess_config, get_loader
 from experiments.stopper import MaxNotImprovedStopper
@@ -51,6 +51,7 @@ if __name__ == "__main__":
     torch.manual_seed(2137)
     ModelCatalog.register_custom_model("fcn", SimpleMlp)
     register_env("Grid_Gym", Grid_Gym)
+    register_env("Grid_Gym_Greedy", Grid_Gym_Greedy)
     ray.shutdown()
     ray.init(ignore_reinit_error=False)
 
@@ -113,7 +114,7 @@ if __name__ == "__main__":
                             log_config=True)],
                 loggers= [CustomTBXLogger],
                 keep_checkpoints_num = 5,
-                checkpoint_score_attr="episode_len_mean",
+                checkpoint_score_attr="episode_reward_mean",
                 verbose = 2,
                 resume = args.resume
                 )

@@ -15,13 +15,15 @@ from grid2op.gym_compat.gym_act_space import GymActionSpace
 from grid2op.gym_compat.utils import check_gym_version
 
 from grid2op_env.medha_action_space import create_action_space, remove_redundant_actions
-from grid2op_env.utils import CustomDiscreteActions
+from grid2op_env.utils import CustomDiscreteActions, get_sub_id_to_action
 from grid2op_env.rewards import ScaledL2RPNReward
 from lightsim2grid import LightSimBackend
-from gym.spaces import Box # needed for adding connectivity matrix
-from configurations import ROOT_DIR
- 
+from gym.spaces import Box, Discrete # needed for adding connectivity matrix
 
+from definitions import ROOT_DIR
+from grid2op_env.utils import get_sub_id_to_elem_id, reverse_dict, get_sub_id_to_action
+from grid2op.Agent.greedyAgent import GreedyAgent
+from grid2op.dtypes import dt_float
 
 
 class CustomGymEnv(GymEnv):
@@ -70,6 +72,131 @@ class CustomGymEnv(GymEnv):
         
         gym_obs = self.observation_space.to_gym(g2op_obs)
         return gym_obs
+
+class SubstationGreedyEnv(CustomGymEnv):
+
+    def __init__(self,env_init, greedy_agent, disable_line = -1):
+        super().__init__(env_init, disable_line)
+        self.agent = greedy_agent
+    
+    def action_mapper(self, sub_id):
+        """
+        Map the action to the substation id.
+        """
+        return self.agent.act(self.last_obs, sub_id)
+
+    def reset(self):
+        if self.disable_line == -1:
+            g2op_obs = self.init_env.reset()
+        else:
+            done = True
+            i = -1
+            while done:
+                g2op_obs = self.init_env.reset()
+                g2op_obs, _, done, info = self.init_env.step(self.init_env.action_space(
+                                    {"set_line_status":(self.disable_line,-1) } ))
+                i += 1
+            if i!= 0:
+                logging.info("Had to skip {} times to get a valid observation".format(i))
+        self.last_obs = g2op_obs # needed for the greedy agent
+        gym_obs = self.observation_space.to_gym(g2op_obs)
+        return gym_obs
+
+    def step(self, gym_action):
+        g2op_act = self.action_mapper(gym_action)
+        g2op_obs, reward, done, info = self.init_env.step(g2op_act)
+        self.last_obs = g2op_obs # needed for the greedy agent
+        gym_obs = self.observation_space.to_gym(g2op_obs)
+        return gym_obs, float(reward), done, info
+
+class RoutingTopologyGreedy(GreedyAgent):
+    """
+    This is a :class:`GreedyAgent` example, which will attempt to reconfigure the substations connectivity.
+
+    It will choose among:
+
+      - doing nothing
+      - changing the topology of one substation.
+
+    To choose, it will simulate the outcome of all actions, and then chose the action leading to the best rewards.
+
+    """
+    def __init__(self, action_space, sub_id_to_action_dict):
+        """[summary]
+
+        Args:
+            action_space ([type]): [description]
+            sub_id_to_action_dict ([type]): [description]
+            num_actions ([type], optional): [description]. Defaults to None.
+        """
+        GreedyAgent.__init__(self, action_space)
+        self.tested_action = None
+        self.sub_id_to_action = sub_id_to_action_dict
+
+    def get_num_to_sub(self):
+        """
+        In case we have less actions than substations we must map the action
+        integer to a substation. Note that the action integer is reserved for the do-nothing action.
+        """
+        self.num_to_sub = {i+1:k for i,k in enumerate(self.sub_id_to_action.keys())}
+        self.num_to_sub[0] = 0
+        print("the num to sub is", self.num_to_sub)
+
+    def _get_tested_action(self, observation, action_int):
+        #if self.tested_action is None:
+        #print("i am here", self.sub_id_to_action)
+        self.sub_id_to_action[0] = [self.action_space({})] # list so it is compatible with greedy agent
+        sub_id = self.num_to_sub[action_int]
+        self.tested_action = self.sub_id_to_action[sub_id]
+
+        # all_actions = []
+        # for act_list in self.sub_id_to_action.values():
+        #     all_actions += act_list
+        # self.tested_action = all_actions
+
+        return self.tested_action
+
+    def act(self, observation, sub_id, done=False):
+        """
+        By definition, all "greedy" agents are acting the same way. The only thing that can differentiate multiple
+        agents is the actions that are tested.
+
+        These actions are defined in the method :func:`._get_tested_action`. This :func:`.act` method implements the
+        greedy logic: take the actions that maximizes the instantaneous reward on the simulated action.
+
+        Parameters
+        ----------
+        observation: :class:`grid2op.Observation.Observation`
+            The current observation of the :class:`grid2op.Environment.Environment`
+
+        reward: ``float``
+            The current reward. This is the reward obtained by the previous action
+
+        done: ``bool``
+            Whether the episode has ended or not. Used to maintain gym compatibility
+
+        Returns
+        -------
+        res: :class:`grid2op.Action.Action`
+            The action chosen by the bot / controller / agent.
+
+        """
+        self.tested_action = self._get_tested_action(observation, sub_id)
+        if len(self.tested_action) > 1:
+            self.resulting_rewards = np.full(shape=len(self.tested_action), fill_value=np.NaN, dtype=dt_float)
+            for i, action in enumerate(self.tested_action):
+                simul_obs, simul_reward, simul_has_error, simul_info = observation.simulate(action)
+                #print(simul_obs.topo_vect)
+                # if (simul_obs.topo_vect == observation.topo_vect).all():
+                #     self.resulting_rewards[i] = float("-inf")
+                # else:
+                self.resulting_rewards[i] = simul_reward
+            reward_idx = int(np.argmax(self.resulting_rewards))  # rewards.index(max(rewards))
+            best_action = self.tested_action[reward_idx]
+        else:
+            best_action = self.tested_action[0]
+        return best_action
+
 class Grid_Gym(gym.Env):
     """
     A wrapper for the gym env required by RLLib.
@@ -84,7 +211,9 @@ class Grid_Gym(gym.Env):
                                         medha_actions=env_config["medha_actions"],
                                         scale = env_config.get("scale", False),
                                         disable_line = env_config.get("disable_line", -1),
-                                        conn_matrix = env_config.get("conn_matrix", False))
+                                        conn_matrix = env_config.get("conn_matrix", False),
+                                        substation_actions = env_config.get("substation_actions", False),
+                                        greedy_agent = env_config.get("greedy_agent", False))
         
         # Define parameters needed for parametric action space
         self.rho_threshold = env_config.get("rho_threshold", 0.95) - 1e-5 # used for stability in edge cases
@@ -95,6 +224,7 @@ class Grid_Gym(gym.Env):
         self.run_until_threshold = env_config.get("run_until_threshold", False)
         self.reward_scaling_factor = env_config.get("reward_scaling_factor", 1) # useful for SAC
         self.log_reward = env_config.get("log_reward", False) # useful for SAC
+        self.steps = 0 # useful for tracking number of steps in the real environment
 
         self.disable_line = env_config.get("disable_line", -1)
         if self.run_until_threshold and self.parametric_action_space:
@@ -194,13 +324,56 @@ class Grid_Gym(gym.Env):
                 self.steps += 1
             #reward = ((self.steps - self.begin_step)/100)*50 # experiment for sac
             reward = cum_reward*self.reward_scaling_factor 
+            if done:
+                info["steps"] = self.steps
             if self.log_reward:
                 reward = np.log2(max(1,reward))
         return obs, reward, done, info
 
+class Grid_Gym_Greedy(Grid_Gym):
+
+    def __init__(self, env_config):
+        super().__init__(env_config)
+        
+        self.action_space = gym.spaces.Discrete(self.env_gym.action_space.n) # then already discrete
+        self.steps = 0
+        print("I am here!!!!")
+        print("Dim action space", self.env_gym.action_space.n)
+        logging.info(f"Dim action space: {self.env_gym.action_space.n}")
+    
+    def reset(self):
+        print(f"Survived {self.steps} real environment steps!")
+        obs = self.env_gym.reset()
+        
+        done = False
+        self.steps = 0
+
+        while (max(obs["rho"]) < self.rho_threshold) and (not done):
+            obs, _, done, _ = self.env_gym.step(0)
+            self.steps += 1
+        return obs
+
+    def step(self, action):
+       
+        obs, reward, done, info = self.env_gym.step(action)
+
+        self.begin_step = self.steps
+        cum_reward = 0
+        while (max(obs["rho"]) < self.rho_threshold) and (not done):
+            cum_reward += reward
+            obs, reward, done, info = self.env_gym.step(0)
+            self.steps += 1
+        reward = cum_reward*self.reward_scaling_factor 
+        if done:
+            info["steps"] = self.steps
+        if self.log_reward:
+            reward = np.log2(max(1,reward))
+        return obs, reward, done, info 
+        
 def create_gym_env(env_name = "rte_case14_realistic" , keep_obseravations = None, keep_actions = None, 
                     scale = True, convert_to_tuple = True, act_on_single_substation  = True,
-                    medha_actions = True, seed=2137, disable_line = -1, conn_matrix = False, **kwargs):
+                    medha_actions = True, seed=2137, disable_line = -1, conn_matrix = False,
+                    substation_actions = False, greedy_agent = False,  **kwargs):
     """
     Create a gym environment from a grid2op environment.
 
@@ -228,6 +401,10 @@ def create_gym_env(env_name = "rte_case14_realistic" , keep_obseravations = None
         If not -1, the line with the given id is disabled.
     conn_matrix: bool
         If True, the connectivity matrix will be added to each observation.
+    substation_actions: bool
+        If True, the action space will be discrete, with n equal to the number of actionable substations.
+    greedy_agent: bool
+        If True, the greedy agent will be used to act once the substations is chosen.
     **kwargs:
         All the parameters of the grid2op environment.
         Most imporant parameters are:
@@ -258,7 +435,13 @@ def create_gym_env(env_name = "rte_case14_realistic" , keep_obseravations = None
         env.set_thermal_limit(thermal_limits)
 
     # Convert to gym
-    env_gym = CustomGymEnv(env, disable_line=disable_line)
+     # Convert to gym
+    if greedy_agent:
+        print("Using greedy agent")
+        agent = RoutingTopologyGreedy(env.action_space, {}) # init a greedy agent with an empy mapping
+        env_gym = SubstationGreedyEnv(env, agent , disable_line=disable_line)
+    else:
+        env_gym = CustomGymEnv(env, disable_line=disable_line)
     logging.info("Environment successfully converted to Gym")
 
     if keep_obseravations is not None:
@@ -297,7 +480,7 @@ def create_gym_env(env_name = "rte_case14_realistic" , keep_obseravations = None
                                       high=np.ones(shape_),
                                     )
                                   )
-    if (act_on_single_substation) and (not medha_actions):
+    if (act_on_single_substation) and (not medha_actions) and (not substation_actions):
 
         if keep_actions is not None:
             env_gym.action_space =DiscreteActSpace(env.action_space,
@@ -332,8 +515,26 @@ def create_gym_env(env_name = "rte_case14_realistic" , keep_obseravations = None
 
         env_gym.action_space = CustomDiscreteActions(converter = converter)
 
+    if substation_actions:
+        print("Entered substation actions")
+        
+        all_actions_with_redundant, reference_substation_indices, all_actions_dict_with_redundant = create_action_space(
+                                                                                                    env,
+                                                                                                    disable_line = disable_line,
+                                                                                                    return_actions_dict=True)  # used in the Grid_Gym converter to only get the data above the threshold
+        all_actions, do_nothing_actions, _ = remove_redundant_actions(all_actions_with_redundant, reference_substation_indices,
+                                                                nb_elements=env.sub_info, all_actions_dict= all_actions_dict_with_redundant,
+                                                                remove_all_redundant_actions=True)
 
-    return env_gym, do_nothing_actions, env, all_actions_dict
+        env_gym.agent.sub_id_to_action = get_sub_id_to_action(all_actions)
+        env_gym.agent.get_num_to_sub()
+
+        num_actionable_subs = len(env_gym.agent.sub_id_to_action.keys())
+        print("Num actionable subs", num_actionable_subs)
+        env_gym.action_space = Discrete(num_actionable_subs + 1) # +1 for the do nothing action
+
+
+    return env_gym, do_nothing_actions, env, all_actions
 
 if __name__ == "__main__":
     logging.basicConfig(filename='env_create.log', filemode='w', level=logging.INFO)
