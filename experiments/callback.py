@@ -55,7 +55,12 @@ class LogDistributionsCallback(DefaultCallbacks):
 
     """
 
-   
+    def on_episode_end(self, *, worker: RolloutWorker, base_env: BaseEnv,
+                       policies: Dict[str, Policy], episode: Episode,
+                       env_index: int, **kwargs):
+        # Make sure this episode is really done.
+        episode.custom_metrics["num_env_steps"] = episode.last_info_for()["steps"]
+        
     def on_learn_on_batch(self, *, policy: Policy, train_batch: SampleBatch,
                         result: dict, **kwargs) -> None:
         
@@ -63,7 +68,7 @@ class LogDistributionsCallback(DefaultCallbacks):
         Log the action distribution and extra information about the observation.
         Note that everything in result[something] is logged by Ray.
         """
-
+        
         if torch.is_tensor(train_batch["obs"]):
             train_batch_obs = train_batch["obs"].numpy()
             train_batch_new_obs = train_batch["new_obs"].numpy()
@@ -73,20 +78,24 @@ class LogDistributionsCallback(DefaultCallbacks):
             train_batch_new_obs = train_batch["new_obs"]
             train_batch_actions = train_batch["actions"]
 
-      
         changed_topo_vec = np.any(train_batch_new_obs[:, -56:]!=train_batch_obs[:, -56:], axis = -1)
-        num_non_zero_actions = np.sum(changed_topo_vec)
-        
-        # print("Chanhed topo vec shape", changed_topo_vec.shape)
-        # print("new obs shape", train_batch["new_obs"].shape)
-        # print("changed_topo_vec", torch.sum(changed_topo_vec))
-        # if torch.is_tensor(train_batch["actions"]): # for ppo it's numpy, for sac it's tensor
-        #     train_batch["actions"] = train_batch["actions"].numpy()
-        #num_non_zero_actions = np.sum(train_batch["actions"] != 0)
-
+        not_changed_topo_vec = 1 - changed_topo_vec
+        non_terminal_actions = np.any(train_batch_new_obs[:, -56:] != -np.ones_like(train_batch_new_obs[:, -56:]), axis = -1)        
+        num_non_zero_actions = np.sum(changed_topo_vec*non_terminal_actions)    
         # Log the proportion of actions that do not change the topology
         result["prop_topo_action_change"] = num_non_zero_actions/train_batch["actions"].shape[0]
-        result["prop_explicit_do_nothing"] = np.sum(train_batch_actions == 0)/num_non_zero_actions
+        result["prop_explicit_do_nothing"] = np.sum((train_batch_actions == 0) & (non_terminal_actions==1 ))/np.sum(not_changed_topo_vec*non_terminal_actions)
+        
+        # print("train batch actions", train_batch_actions)
+        # print("shape changed topo vect", changed_topo_vec.shape)
+        # print("non terminal actions", non_terminal_actions.sum(), non_terminal_actions)
+        # print("old", train_batch_obs[0, -56:])
+        # print("new", train_batch_new_obs[0, -56:])
+        # print("num non zero actions", num_non_zero_actions)
+        # print("chaned_topo", changed_topo_vec)
+        # print("prop_explicit_do_nothing", result["prop_explicit_do_nothing"])
+        # print("-"*40)
+
         # Count all of the actions and save them to action
         unique, counts = np.unique(train_batch_actions[changed_topo_vec], return_counts=True)
         action_distr_dic = {}
