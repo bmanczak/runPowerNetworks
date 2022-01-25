@@ -6,6 +6,7 @@ import logging
 import gym 
 import time
 
+from collections import OrderedDict
 from grid2op.PlotGrid import PlotMatplot 
 from grid2op.gym_compat import GymEnv, MultiToTupleConverter, DiscreteActSpace,ScalerAttrConverter
 from grid2op.Reward import L2RPNReward
@@ -13,17 +14,20 @@ from grid2op.Converter import IdToAct
 from grid2op.gym_compat.gym_obs_space import GymObservationSpace
 from grid2op.gym_compat.gym_act_space import GymActionSpace
 from grid2op.gym_compat.utils import check_gym_version
+from grid2op.Agent.greedyAgent import GreedyAgent
+from grid2op.dtypes import dt_float
+from lightsim2grid import LightSimBackend
+
+from gym.spaces import Box, Discrete # needed for adding connectivity matrix
 
 from grid2op_env.medha_action_space import create_action_space, remove_redundant_actions
 from grid2op_env.utils import CustomDiscreteActions, get_sub_id_to_action
 from grid2op_env.rewards import ScaledL2RPNReward
-from lightsim2grid import LightSimBackend
-from gym.spaces import Box, Discrete # needed for adding connectivity matrix
-
-from definitions import ROOT_DIR
 from grid2op_env.utils import get_sub_id_to_elem_id, reverse_dict, get_sub_id_to_action
-from grid2op.Agent.greedyAgent import GreedyAgent
-from grid2op.dtypes import dt_float
+from models.utils import vectorize_obs
+from definitions import ROOT_DIR
+
+
 
 
 class CustomGymEnv(GymEnv):
@@ -75,8 +79,9 @@ class CustomGymEnv(GymEnv):
 
 class SubstationGreedyEnv(CustomGymEnv):
 
-    def __init__(self,env_init, greedy_agent, disable_line = -1):
+    def __init__(self,env_init, greedy_agent, disable_line = -1, graph_obs = False):
         super().__init__(env_init, disable_line)
+        self.graph_obs = graph_obs
         self.agent = greedy_agent
     
     def action_mapper(self, sub_id):
@@ -99,6 +104,12 @@ class SubstationGreedyEnv(CustomGymEnv):
             if i!= 0:
                 logging.info("Had to skip {} times to get a valid observation".format(i))
         self.last_obs = g2op_obs # needed for the greedy agent
+        # if self.graph_obs:
+        #     print("Vectorizing the observation!!")
+        #     gym_obs = self.observation_space.to_gym(g2op_obs)
+        #     gym_obs = vectorize_obs(gym_obs, self.init_env)
+        #     print("Shape of vectorized", gym_obs.shape)
+        # else:
         gym_obs = self.observation_space.to_gym(g2op_obs)
         return gym_obs
 
@@ -106,6 +117,12 @@ class SubstationGreedyEnv(CustomGymEnv):
         g2op_act = self.action_mapper(gym_action)
         g2op_obs, reward, done, info = self.init_env.step(g2op_act)
         self.last_obs = g2op_obs # needed for the greedy agent
+        # if self.graph_obs:
+        #     print("Vectorizing the observation!!")
+        #     gym_obs = self.observation_space.to_gym(g2op_obs)
+        #     gym_obs = vectorize_obs(gym_obs, self.init_env)
+        #     print("Shape of vectorized", gym_obs.shape)
+        # else:
         gym_obs = self.observation_space.to_gym(g2op_obs)
         return gym_obs, float(reward), done, info
 
@@ -213,7 +230,8 @@ class Grid_Gym(gym.Env):
                                         disable_line = env_config.get("disable_line", -1),
                                         conn_matrix = env_config.get("conn_matrix", False),
                                         substation_actions = env_config.get("substation_actions", False),
-                                        greedy_agent = env_config.get("greedy_agent", False))
+                                        greedy_agent = env_config.get("greedy_agent", False),
+                                        graph_obs = env_config.get("graph_obs", False))
         
         # Define parameters needed for parametric action space
         self.rho_threshold = env_config.get("rho_threshold", 0.95) - 1e-5 # used for stability in edge cases
@@ -337,8 +355,12 @@ class Grid_Gym_Greedy(Grid_Gym):
         
         self.action_space = gym.spaces.Discrete(self.env_gym.action_space.n) # then already discrete
         self.steps = 0
+        #self.graph_obs = env_config.get("graph_obs", False)
+        # self.action_space = gym.spaces.Discrete(self.env_gym.action_space.n) 
+        # self.observation_space =self.env_gym.observation_space
         print("I am here!!!!")
         print("Dim action space", self.env_gym.action_space.n)
+        print("Observation space", self.env_gym.observation_space)
         logging.info(f"Dim action space: {self.env_gym.action_space.n}")
     
     def reset(self):
@@ -347,10 +369,12 @@ class Grid_Gym_Greedy(Grid_Gym):
         
         done = False
         self.steps = 0
-
         while (max(obs["rho"]) < self.rho_threshold) and (not done):
             obs, _, done, _ = self.env_gym.step(0)
             self.steps += 1
+         # See https://discuss.ray.io/t/preprocessor-fails-on-observation-vector/614
+        # order matters
+        obs = OrderedDict((k, obs[k]) for k in self.observation_space.spaces)
         return obs
 
     def step(self, action):
@@ -368,12 +392,15 @@ class Grid_Gym_Greedy(Grid_Gym):
             info["steps"] = self.steps
         if self.log_reward:
             reward = np.log2(max(1,reward))
+        # See https://discuss.ray.io/t/preprocessor-fails-on-observation-vector/614
+        # order matters
+        obs = OrderedDict((k, obs[k]) for k in self.observation_space.spaces)
         return obs, reward, done, info 
         
 def create_gym_env(env_name = "rte_case14_realistic" , keep_obseravations = None, keep_actions = None, 
                     scale = True, convert_to_tuple = True, act_on_single_substation  = True,
                     medha_actions = True, seed=2137, disable_line = -1, conn_matrix = False,
-                    substation_actions = False, greedy_agent = False,  **kwargs):
+                    substation_actions = False, greedy_agent = False, graph_obs = False,  **kwargs):
     """
     Create a gym environment from a grid2op environment.
 
@@ -439,7 +466,7 @@ def create_gym_env(env_name = "rte_case14_realistic" , keep_obseravations = None
     if greedy_agent:
         print("Using greedy agent")
         agent = RoutingTopologyGreedy(env.action_space, {}) # init a greedy agent with an empy mapping
-        env_gym = SubstationGreedyEnv(env, agent , disable_line=disable_line)
+        env_gym = SubstationGreedyEnv(env, agent , disable_line=disable_line, graph_obs = graph_obs)
     else:
         env_gym = CustomGymEnv(env, disable_line=disable_line)
     logging.info("Environment successfully converted to Gym")
@@ -535,6 +562,34 @@ def create_gym_env(env_name = "rte_case14_realistic" , keep_obseravations = None
 
 
     return env_gym, do_nothing_actions, env, all_actions
+
+
+def get_env_spec(env_config):
+    """
+    Get the constants of the environment.
+    
+    Keyword arguments:
+    ----------
+    env_config: dict
+        The dictionary with the environment configuration.
+    """
+    env_gym, _, env, _ = create_gym_env(env_name = env_config["env_name"],
+                                        keep_obseravations= env_config["keep_observations"],
+                                        keep_actions= env_config["keep_actions"],
+                                        convert_to_tuple=env_config["convert_to_tuple"],
+                                        act_on_single_substation=env_config["act_on_single_substation"],
+                                        medha_actions=env_config["medha_actions"],
+                                        scale = env_config.get("scale", False),
+                                        disable_line = env_config.get("disable_line", -1),
+                                        conn_matrix = env_config.get("conn_matrix", False),
+                                        substation_actions = env_config.get("substation_actions", False),
+                                        greedy_agent = env_config.get("greedy_agent", False),
+                                        graph_obs = env_config.get("graph_obs", False))
+    sub_id_to_elem_id = get_sub_id_to_elem_id(env)
+    topo_spec = env.action_space # holds the topology of the elements
+    sub_id_to_action = env_gym.agent.sub_id_to_action 
+    return sub_id_to_elem_id, topo_spec, sub_id_to_action
+
 
 if __name__ == "__main__":
     logging.basicConfig(filename='env_create.log', filemode='w', level=logging.INFO)

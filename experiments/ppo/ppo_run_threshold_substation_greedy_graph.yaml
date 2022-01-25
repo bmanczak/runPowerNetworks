@@ -1,11 +1,5 @@
-model_config: &model_config
-  fcnet_hiddens: [128,128,128]
-  fcnet_activation: relu
-  custom_model : fcn
-  custom_model_config : 
-    use_parametric: False
-    env_obs_name: grid
-                         
+
+                        
 env_config: &env_config
   env_name: rte_case14_realistic
   keep_actions: [change_bus]
@@ -24,6 +18,16 @@ env_config: &env_config
   greedy_agent : True
   conn_matrix: True
 
+model_config: &model_config
+  custom_model : substation_module
+  custom_model_config : 
+    num_features: 7
+    hidden_dim: 128
+    nheads: 4
+    num_layers: 3
+    dropout : 0
+    mask_nodes: None
+    env_config: *env_config
 
 tune_config:
   env: Grid_Gym_Greedy

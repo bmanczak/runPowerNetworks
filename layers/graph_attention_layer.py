@@ -14,8 +14,8 @@ class GATLayer(nn.Module):
     def forward(self, x, adj):
         x = self.slf_attn(x, adj)
         # return x
-        print("x shape: ", x.shape)
-        print("chuuj", x)
+        # print("x shape: ", x.shape)
+        # print("chuuj", x)
         x = self.pos_ffn(x)
         return x
 
@@ -67,13 +67,13 @@ class MultiHeadAttention(nn.Module):
        
         output = output.view(n_head, sz_b, len_q, d_k)
         output = output.permute(1, 2, 0, 3).contiguous().view(sz_b, len_q, -1) # b x lq x (n*dv)
-        print("output here", output)
+        # print("output here", output)
         # return x
 
         output = F.relu(self.dropout(self.fc(output)))
-        print("post relu", output)
+        # print("post relu", output)
         output = self.gate(residual, output)
-        print("post gate", output)
+        # print("post gate", output)
         return output  
 
 
@@ -100,23 +100,27 @@ class ScaledDotProductAttention(nn.Module):
         self.dropout = nn.Dropout(attn_dropout)
 
     def forward(self, q, k, v, adj):
+        if torch.count_nonzero(adj).item()==0: 
+            adj += 1 # just done to pass the "dummy batch" of zeros sanity check
+
         attn = torch.bmm(q, k.transpose(1, 2))
         attn = attn / self.temperature
         attn = attn.masked_fill(adj==0, -np.inf)
-        attn = self.dropout(F.softmax(attn, dim=-1))
+        attn = F.softmax(attn, dim=-1)
+        attn = self.dropout(attn)
         ## change start
         # print("adj shape", adj.shape)
         # print("attn shape", attn.shape)
         # print("attn before softmax", attn)
         # attn = F.softmax(attn, dim=-1)
-        attn[attn!=attn] = 0
-        print("after softamx", attn)    
+        #attn[attn!=attn] = 0
+        # print("after softamx", attn)    
         ## change end
         #print("after softamx", attn)
         output = torch.matmul(attn, v)
-        print("after matmul", output)
+        # print("after matmul", output)
         return output
-        
+
 
 class GRUGate(nn.Module):    
     def __init__(self, d):

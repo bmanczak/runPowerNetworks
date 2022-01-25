@@ -27,6 +27,7 @@ from ray.tune.stopper import CombinedStopper, MaximumIterationStopper
 from dotenv import load_dotenv # security keys
 
 from models.mlp import SimpleMlp
+from models.substation_module import RllibSubsationModule
 from grid2op_env.grid_to_gym import Grid_Gym, Grid_Gym_Greedy
 from experiments.callback import CustomTBXLogger, LogDistributionsCallback
 from experiments.preprocess_config import preprocess_config, get_loader
@@ -50,6 +51,7 @@ if __name__ == "__main__":
     np.random.seed(2137)
     torch.manual_seed(2137)
     ModelCatalog.register_custom_model("fcn", SimpleMlp)
+    ModelCatalog.register_custom_model("substation_module", RllibSubsationModule)
     register_env("Grid_Gym", Grid_Gym)
     register_env("Grid_Gym_Greedy", Grid_Gym_Greedy)
     ray.shutdown()
