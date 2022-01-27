@@ -125,6 +125,18 @@ class SubstationGreedyEnv(CustomGymEnv):
         # else:
         gym_obs = self.observation_space.to_gym(g2op_obs)
         return gym_obs, float(reward), done, info
+    
+    def close(self):
+        """
+        Removes the .close() method from GymActionSpace.
+        """
+        if hasattr(self, "init_env") and self.init_env is None:
+            self.init_env.close()
+            del self.init_env
+        self.init_env = None
+        if hasattr(self, "observation_space") and self.observation_space is not None:
+            self.observation_space.close()
+        self.observation_space = None
 
 class RoutingTopologyGreedy(GreedyAgent):
     """
@@ -500,13 +512,14 @@ def create_gym_env(env_name = "rte_case14_realistic" , keep_obseravations = None
                                                                     ))
     if conn_matrix:
         shape_ = (env.dim_topo, env.dim_topo)
-        env_gym.observation_space.add_key("connectivity_matrix",
-                                  lambda obs: obs.connectivity_matrix(),
+        static_connectivity_matrix = env.reset().connectivity_matrix(as_csr_matrix=False) # all elements on bar 1
+        env_gym.observation_space.add_key("connectivity_matrix", # this matrix shows what elements can theoretically be connected to each other
+                                  lambda obs: static_connectivity_matrix, #obs.connectivity_matrix()
                                   Box(shape=shape_,
                                       low=np.zeros(shape_),
                                       high=np.ones(shape_),
                                     )
-                                  )
+                                  )           
     if (act_on_single_substation) and (not medha_actions) and (not substation_actions):
 
         if keep_actions is not None:

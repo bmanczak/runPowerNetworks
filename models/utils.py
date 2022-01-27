@@ -1,4 +1,8 @@
 import torch 
+import numpy as np
+
+from sknetwork.utils import edgelist2adjacency
+from typing import Tuple, List
 
 def vectorize_obs(obs, env_action_space, hazard_threshold = 0.9):
     """
@@ -17,36 +21,37 @@ def vectorize_obs(obs, env_action_space, hazard_threshold = 0.9):
     # for key in obs.keys():
     #     print(key, obs[key].shape)
     # rho is symmetric for both ends of the line [batch_dim, 56,1]
-    rho = torch.zeros((batch_size, length))
+    device = obs["rho"].device
+    rho = torch.zeros((batch_size, length), device = device)
     rho[:,env_action_space.line_or_pos_topo_vect] = obs["rho"]
     rho[:, env_action_space.line_ex_pos_topo_vect] = obs["rho"]
 
     # active power p [batch_dim, 56,1]
-    p = torch.zeros((batch_size, length))
+    p = torch.zeros((batch_size, length), device = device)
     p[:,env_action_space.gen_pos_topo_vect] = obs["gen_p"]# generator active production
     p[:,env_action_space.load_pos_topo_vect] = obs["load_p"] # load active consumption
     p[:,env_action_space.line_or_pos_topo_vect] = obs["p_or"] # origin active flow
     p[:,env_action_space.line_ex_pos_topo_vect] = obs["p_ex"] # Extremity active flow
 
     # overflow [batch_dim, 56,1]
-    over = torch.zeros((batch_size, length))
+    over = torch.zeros((batch_size, length), device = device)
     over[:,env_action_space.line_or_pos_topo_vect] = obs["timestep_overflow"].float()
     over[:,env_action_space.line_ex_pos_topo_vect] = obs["timestep_overflow"].float()
 
     # one-hot topo vector [batch_dim, 56,3]
-    topo_vect_one_hot = torch.zeros((batch_size, length,3))
+    topo_vect_one_hot = torch.zeros((batch_size, length,3), device = device)
     topo_vect = obs["topo_vect"] # [batch_dim, 56,1]
     topo_vect[topo_vect==-1] = 0 # change disconneted from -1 to 0
     topo_vect_one_hot = torch.nn.functional.one_hot(topo_vect.to(torch.int64), num_classes=3)
     # print("topo_vect_one_hot", topo_vect_one_hot.shape)
 
     # powerline maintenance
-    # maintenance = torch.zeros((batch_size, length))
+    # maintenance = torch.zeros((batch_size, length), device = device)
     # maintenance[env_action_space.line_or_pos_topo_vect] = obs["maintenance"]).float()
     # maintenance[env_action_space.line_ex_pos_topo_vect] = obs["maintenance"]).float()
 
     # manual feature thresholding 
-    hazard = torch.zeros((batch_size, length)) # [batch_dim, 56,1]
+    hazard = torch.zeros((batch_size, length), device = device) # [batch_dim, 56,1]
     hazard[:,env_action_space.line_or_pos_topo_vect] = (obs["rho"] > hazard_threshold).float()
     hazard[:,env_action_space.line_ex_pos_topo_vect] = (obs["rho"] > hazard_threshold).float()
 
@@ -79,5 +84,31 @@ def pool_per_substation(arr, sub_to_id, pooling_operator = "mean"):
             pooled.append(torch.mean(arr[:, elements, :], dim = 1, keepdim=True))
     
     return torch.cat(pooled, dim = 1)
+
+def get_sub_adjacency_matrix(line_to_sub_id_tuple: Tuple[List, List], rho: np.array = None,
+                             add_self_loops: bool = True) -> np.array:
+    """
+    Get the adjacency matrix of the substations taking into
+    account the disabled line.
+    
+    Keyword arguments:
+    ----------
+    line_to_sub_id_tuple: tuple of lists
+        The list of edges of the graph.
+    rho: list
+        The list of the rho values.
+    """
+    edge_list = np.array(list(zip(*line_to_sub_id_tuple)))
+
+    if rho is not None:
+        working_lines = np.argwhere(rho>0).flatten()
+        edge_list = edge_list[working_lines]
+
+    adj = edgelist2adjacency(edge_list, undirected=True).todense()
+
+    if add_self_loops:
+        np.fill_diagonal(adj, 1)
+
+    return adj
         
 
