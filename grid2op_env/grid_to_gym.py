@@ -577,7 +577,7 @@ def create_gym_env(env_name = "rte_case14_realistic" , keep_obseravations = None
     return env_gym, do_nothing_actions, env, all_actions
 
 
-def get_env_spec(env_config):
+def get_env_spec(env_config:dict):
     """
     Get the constants of the environment.
     
@@ -601,7 +601,11 @@ def get_env_spec(env_config):
     sub_id_to_elem_id = get_sub_id_to_elem_id(env)
     topo_spec = env.action_space # holds the topology of the elements
     sub_id_to_action = env_gym.agent.sub_id_to_action 
-    return sub_id_to_elem_id, topo_spec, sub_id_to_action
+
+    line_to_sub_id = (env.reset().line_or_to_subid, env.reset().line_ex_to_subid)
+
+    return sub_id_to_elem_id, topo_spec, sub_id_to_action, line_to_sub_id
+
 
 
 if __name__ == "__main__":
