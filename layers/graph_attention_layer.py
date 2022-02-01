@@ -9,33 +9,31 @@ class GATLayer(nn.Module):
     def __init__(self, output_dim, nheads, dropout=0):
         super(GATLayer, self).__init__()
         self.slf_attn = MultiHeadAttention(nheads, output_dim, output_dim//4, dropout=dropout)
-        self.pos_ffn = PositionwiseFeedForward(output_dim, output_dim, dropout=dropout)
+        self.pos_ffn = PositionwiseFeedForward(d_in = output_dim, dhid = 2*output_dim, dropout=dropout)
     
     def forward(self, x, adj):
         x = self.slf_attn(x, adj)
-        # return x
-        # print("x shape: ", x.shape)
-        # print("chuuj", x)
         x = self.pos_ffn(x)
         return x
 
 
 class MultiHeadAttention(nn.Module):
-    def __init__(self, n_head, d_model, d_k, dropout=0):
+    def __init__(self, n_head, d_model, d_k, dropout=0, query_context=False):
         super().__init__()
         self.n_head = n_head
-        self.d_k = d_k
-        self.w_qs = nn.Linear(d_model, n_head * d_k)
-        self.w_ks = nn.Linear(d_model, n_head * d_k)
-        self.w_vs = nn.Linear(d_model, n_head * d_k)
+        self.d_k = d_k  #d_k
+        self.query_context = query_context
+        self.w_qs = nn.Linear(d_model, n_head * self.d_k)
+        self.w_ks = nn.Linear(d_model, n_head * self.d_k)
+        self.w_vs = nn.Linear(d_model, n_head * self.d_k)
 
-        nn.init.normal_(self.w_qs.weight, mean=0, std=np.sqrt(2.0 / (d_model + d_k)))
-        nn.init.normal_(self.w_ks.weight, mean=0, std=np.sqrt(2.0 / (d_model + d_k)))
-        nn.init.normal_(self.w_vs.weight, mean=0, std=np.sqrt(2.0 / (d_model + d_k)))
+        nn.init.normal_(self.w_qs.weight, mean=0, std=np.sqrt(2.0 / (d_model + self.d_k)))
+        nn.init.normal_(self.w_ks.weight, mean=0, std=np.sqrt(2.0 / (d_model + self.d_k)))
+        nn.init.normal_(self.w_vs.weight, mean=0, std=np.sqrt(2.0 / (d_model + self.d_k)))
         
-        self.attention = ScaledDotProductAttention(temperature=np.power(d_k, 0.5), attn_dropout=dropout)
+        self.attention = ScaledDotProductAttention(temperature=np.power(self.d_k, 0.5), attn_dropout=dropout)
         self.ln= nn.LayerNorm(d_model)
-        self.fc = nn.Linear(n_head * d_k, d_model)
+        self.fc = nn.Linear(n_head * self.d_k, d_model)
         nn.init.xavier_normal_(self.fc.weight)
         self.dropout = nn.Dropout(dropout)
         self.gate = GRUGate(d_model)
@@ -44,7 +42,7 @@ class MultiHeadAttention(nn.Module):
         residual = x
         x = self.ln(x)
 
-        q = x
+        q = torch.mean(x, dim = 1, keepdim=True) if self.query_context else x
         k = x
         v = x
 
@@ -62,7 +60,10 @@ class MultiHeadAttention(nn.Module):
         k = k.permute(2, 0, 1, 3).contiguous().view(-1, len_k, d_k) # (n*b) x lk x dk
         v = v.permute(2, 0, 1, 3).contiguous().view(-1, len_v, d_k) # (n*b) x lv x dv
 
-        adj = adj.unsqueeze(1).repeat(1, n_head, 1, 1).reshape(-1, len_q, len_q)
+        if self.query_context: # let the attention look at all the substations
+            adj = torch.ones(sz_b*n_head, q.shape[1], k.shape[1])
+        else: 
+            adj = adj.unsqueeze(1).repeat(1, n_head, 1, 1).reshape(-1, len_q, len_q)
         output = self.attention(q, k, v, adj)
        
         output = output.view(n_head, sz_b, len_q, d_k)
@@ -72,10 +73,27 @@ class MultiHeadAttention(nn.Module):
 
         output = F.relu(self.dropout(self.fc(output)))
         # print("post relu", output)
-        output = self.gate(residual, output)
+        if not self.query_context:
+            output = self.gate(residual, output)
         # print("post gate", output)
         return output  
 
+class DecoderAttention(nn.Module):
+
+    def __init__(self,temperature ,clip_constant = 10):
+        super().__init__()
+        self.temperature = temperature
+        self.clip_constant = clip_constant
+
+    def forward(self, q, k, adj):
+
+        attn = torch.bmm(q, k.transpose(1, 2))
+        attn = attn / self.temperature
+        attn = self.clip_constant * F.tanh(attn)
+        # attn = attn.masked_fill(adj==0, -np.inf)
+        #print("attn", attn.shape)
+      
+        return attn
 
 class PositionwiseFeedForward(nn.Module):
     def __init__(self, d_in, dhid, dropout=0):
@@ -92,7 +110,7 @@ class PositionwiseFeedForward(nn.Module):
         x = F.relu(self.w_2(F.relu((self.w_1(x)))))
         return self.gate(residual, x)
         
-        
+
 class ScaledDotProductAttention(nn.Module):
     def __init__(self, temperature, attn_dropout=0):
         super().__init__()
@@ -100,23 +118,18 @@ class ScaledDotProductAttention(nn.Module):
         self.dropout = nn.Dropout(attn_dropout)
 
     def forward(self, q, k, v, adj):
-        if torch.count_nonzero(adj).item()==0: 
-            adj += 1 # just done to pass the "dummy batch" of zeros sanity check
-
+    
         attn = torch.bmm(q, k.transpose(1, 2))
         attn = attn / self.temperature
+        # print("INSIDE DOT PRODUCT ATTENTION")
+        # print("attn", attn.shape)
+        # print("adj", adj.shape)
+        # print("attn device", attn.device)
+        # print("adj device", adj.device)
+        adj = adj.to(attn.device)
         attn = attn.masked_fill(adj==0, -np.inf)
         attn = F.softmax(attn, dim=-1)
         attn = self.dropout(attn)
-        ## change start
-        # print("adj shape", adj.shape)
-        # print("attn shape", attn.shape)
-        # print("attn before softmax", attn)
-        # attn = F.softmax(attn, dim=-1)
-        #attn[attn!=attn] = 0
-        # print("after softamx", attn)    
-        ## change end
-        #print("after softamx", attn)
         output = torch.matmul(attn, v)
         # print("after matmul", output)
         return output
