@@ -7,12 +7,10 @@ from grid2op.Agent import DoNothingAgent
 from grid2op.Runner import Runner
 from ray.rllib.models import ModelCatalog
 
-from grid2op_env.grid_to_gym import Grid_Gym
+from grid2op_env.grid_to_gym import Grid_Gym, Grid_Gym_Greedy
 from evaluation.restore_agent import restore_agent
-from rllib_to_grid import AgentFromGym
+from rllib_to_grid import AgentFromGym, AgentThresholdEnv, AgentThresholdEnvGreedy
 from models.mlp import SimpleMlp
-
-
 
 
 def run_eval(agent_type = "ppo", checkpoint_path = None, checkpoint_num = None,
@@ -69,21 +67,28 @@ def run_eval(agent_type = "ppo", checkpoint_path = None, checkpoint_num = None,
 
     agent, env_config = restore_agent(path = checkpoint_path,
                    checkpoint_num = checkpoint_num,
-                   modify_keys={"env_config": {"scale": scale_obs}},
                    return_env_config = True)
 
-    rllib_env = Grid_Gym(env_config)
-    wrapped_agent = AgentFromGym(rllib_env, agent)
-
-    if agent_type =="ppo":
-        runner = Runner(**rllib_env.org_env.get_params_for_runner(), agentClass=None, agentInstance=wrapped_agent)
-    
-    elif agent_type == "dn":
-        runner = Runner(**rllib_env.org_env.get_params_for_runner(), agentClass=DoNothingAgent, agentInstance=None)
-    
+    if env_config["greedy_agent"]:
+        rllib_env = Grid_Gym_Greedy(env_config)
     else:
-        raise ValueError("Agent type not recognized. Avaliable options are 'ppo' and 'dn'")
-
+        rllib_env = Grid_Gym(env_config)
+    
+    if env_config["run_until_threshold"]:
+        if env_config["greedy_agent"]:
+            wrapped_agent = AgentThresholdEnvGreedy(rllib_env, agent,
+                             rho_threshold = env_config["rho_threshold"])
+        else:
+            wrapped_agent = AgentThresholdEnv(rllib_env, agent,
+                             rho_threshold = env_config["rho_threshold"])
+    else:
+        wrapped_agent = AgentFromGym(rllib_env, agent)
+    
+    if agent_type =="dn":
+        runner = Runner(**rllib_env.org_env.get_params_for_runner(), agentClass=DoNothingAgent, agentInstance=None)
+    else:
+        runner = Runner(**rllib_env.org_env.get_params_for_runner(), agentClass=None, agentInstance=wrapped_agent)
+        
     res = runner.run(nb_episode=nb_episode, 
                  nb_process=nb_core,
                  path_save=save_path, 

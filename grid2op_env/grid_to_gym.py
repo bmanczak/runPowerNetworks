@@ -84,11 +84,13 @@ class SubstationGreedyEnv(CustomGymEnv):
         self.graph_obs = graph_obs
         self.agent = greedy_agent
     
-    def action_mapper(self, sub_id):
+    def action_mapper(self, sub_id, obs = None):
         """
         Map the action to the substation id.
         """
-        return self.agent.act(self.last_obs, sub_id)
+        if obs is None:
+            obs = self.last_obs 
+        return self.agent.act(obs, sub_id)
 
     def reset(self):
         if self.disable_line == -1:
@@ -114,7 +116,9 @@ class SubstationGreedyEnv(CustomGymEnv):
         return gym_obs
 
     def step(self, gym_action):
-        g2op_act = self.action_mapper(gym_action)
+        g2op_act = self.action_mapper(sub_id = gym_action)
+        # print("gym action", gym_action)
+        self.g2op_act = g2op_act
         g2op_obs, reward, done, info = self.init_env.step(g2op_act)
         self.last_obs = g2op_obs # needed for the greedy agent
         # if self.graph_obs:
@@ -175,6 +179,7 @@ class RoutingTopologyGreedy(GreedyAgent):
         #if self.tested_action is None:
         #print("i am here", self.sub_id_to_action)
         self.sub_id_to_action[0] = [self.action_space({})] # list so it is compatible with greedy agent
+        #print("action",action_int)
         sub_id = self.num_to_sub[action_int]
         self.tested_action = self.sub_id_to_action[sub_id]
 
@@ -214,6 +219,7 @@ class RoutingTopologyGreedy(GreedyAgent):
         if len(self.tested_action) > 1:
             self.resulting_rewards = np.full(shape=len(self.tested_action), fill_value=np.NaN, dtype=dt_float)
             for i, action in enumerate(self.tested_action):
+                #print("type of observation", type(observation))
                 simul_obs, simul_reward, simul_has_error, simul_info = observation.simulate(action)
                 #print(simul_obs.topo_vect)
                 # if (simul_obs.topo_vect == observation.topo_vect).all():
@@ -223,7 +229,9 @@ class RoutingTopologyGreedy(GreedyAgent):
             reward_idx = int(np.argmax(self.resulting_rewards))  # rewards.index(max(rewards))
             best_action = self.tested_action[reward_idx]
         else:
+           # print("No op action is taken")
             best_action = self.tested_action[0]
+            #print(best_action)
         return best_action
 
 class Grid_Gym(gym.Env):
@@ -302,6 +310,7 @@ class Grid_Gym(gym.Env):
         Transforms grid2op obs to gym obs.
         """
         obs = self.env_gym.observation_space.to_gym(g2op_obs)
+        obs = OrderedDict((k, obs[k]) for k in self.observation_space.spaces)
         if self.parametric_action_space:
             mask_topo_change = max(obs["rho"]) < self.rho_threshold
             self.update_avaliable_actions(mask_topo_change)
@@ -402,6 +411,7 @@ class Grid_Gym_Greedy(Grid_Gym):
         reward = cum_reward*self.reward_scaling_factor 
         if done:
             info["steps"] = self.steps
+            self.steps = 0
         if self.log_reward:
             reward = np.log2(max(1,reward))
         # See https://discuss.ray.io/t/preprocessor-fails-on-observation-vector/614
