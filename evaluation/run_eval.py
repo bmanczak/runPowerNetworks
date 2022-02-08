@@ -96,12 +96,15 @@ def run_eval(agent_type = "ppo", checkpoint_path = None, checkpoint_num = None,
                 episode_id= episode_id,
                 pbar = True)
 
-
+    num_steps_completed = []
     for _, chron_id, cum_reward, nb_time_step, max_ts in res:
         msg_tmp = "\tFor chronics with id {}\n".format(chron_id)
         msg_tmp += "\t\t - cumulative reward: {:.6f}\n".format(cum_reward)
         msg_tmp += "\t\t - number of time steps completed: {:.0f} / {:.0f}".format(nb_time_step, max_ts)
+        num_steps_completed.append(nb_time_step)
         print(msg_tmp)
+
+    print("\n\tAverage number of time steps completed: {:.0f}".format(np.mean(num_steps_completed)))
 
 
 if "__main__" == __name__:

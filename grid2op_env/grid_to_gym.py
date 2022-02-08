@@ -411,7 +411,6 @@ class Grid_Gym_Greedy(Grid_Gym):
         reward = cum_reward*self.reward_scaling_factor 
         if done:
             info["steps"] = self.steps
-            self.steps = 0
         if self.log_reward:
             reward = np.log2(max(1,reward))
         # See https://discuss.ray.io/t/preprocessor-fails-on-observation-vector/614
