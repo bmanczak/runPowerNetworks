@@ -4,12 +4,13 @@ import grid2op
 import os
 import logging
 import gym 
+import random
 import time
 
 from collections import OrderedDict
 from grid2op.PlotGrid import PlotMatplot 
 from grid2op.gym_compat import GymEnv, MultiToTupleConverter, DiscreteActSpace,ScalerAttrConverter
-from grid2op.Reward import L2RPNReward
+from grid2op.Reward import L2RPNReward, CombinedReward
 from grid2op.Converter import IdToAct
 from grid2op.gym_compat.gym_obs_space import GymObservationSpace
 from grid2op.gym_compat.gym_act_space import GymActionSpace
@@ -22,7 +23,7 @@ from gym.spaces import Box, Discrete # needed for adding connectivity matrix
 
 from grid2op_env.medha_action_space import create_action_space, remove_redundant_actions
 from grid2op_env.utils import CustomDiscreteActions, get_sub_id_to_action
-from grid2op_env.rewards import ScaledL2RPNReward
+from grid2op_env.rewards import ScaledL2RPNReward, CloseToOverflowReward, LinesReconnectedReward, DistanceReward
 from grid2op_env.utils import get_sub_id_to_elem_id, reverse_dict, get_sub_id_to_action
 from models.utils import vectorize_obs
 from definitions import ROOT_DIR
@@ -251,7 +252,8 @@ class Grid_Gym(gym.Env):
                                         conn_matrix = env_config.get("conn_matrix", False),
                                         substation_actions = env_config.get("substation_actions", False),
                                         greedy_agent = env_config.get("greedy_agent", False),
-                                        graph_obs = env_config.get("graph_obs", False))
+                                        graph_obs = env_config.get("graph_obs", False),
+                                        combine_rewards= env_config.get("combine_rewards", False))
         
         # Define parameters needed for parametric action space
         self.rho_threshold = env_config.get("rho_threshold", 0.95) - 1e-5 # used for stability in edge cases
@@ -356,12 +358,23 @@ class Grid_Gym(gym.Env):
 
         elif self.run_until_threshold:
             self.begin_step = self.steps
-            cum_reward = 0
+            cum_reward = reward
             while (max(obs["rho"]) < self.rho_threshold) and (not done):
-                cum_reward += reward
                 obs, reward, done, info = self.env_gym.step(self.do_nothing_actions[0])
+                cum_reward += reward
                 self.steps += 1
             #reward = ((self.steps - self.begin_step)/100)*50 # experiment for sac
+            # do_nothing_steps = max(1, self.steps - self.begin_step)
+            
+            # if random.uniform(0,1) < 0.02: # 2% of the time print
+            #     print("action reward is", reward)
+                
+            #     scaled_no_op = (np.log2(max(1,do_nothing_steps))/do_nothing_steps)*(cum_reward)
+            #     print("scaled reward is", scaled_no_op)
+            #     if scaled_no_op > 0:
+            #         print("The ratio is", reward / scaled_no_op )
+
+            # reward = reward + (1/do_nothing_steps)*cum_reward # 
             reward = cum_reward*self.reward_scaling_factor 
             if done:
                 info["steps"] = self.steps
@@ -401,7 +414,6 @@ class Grid_Gym_Greedy(Grid_Gym):
     def step(self, action):
        
         obs, reward, done, info = self.env_gym.step(action)
-
         self.begin_step = self.steps
         cum_reward = 0
         while (max(obs["rho"]) < self.rho_threshold) and (not done):
@@ -421,7 +433,8 @@ class Grid_Gym_Greedy(Grid_Gym):
 def create_gym_env(env_name = "rte_case14_realistic" , keep_obseravations = None, keep_actions = None, 
                     scale = True, convert_to_tuple = True, act_on_single_substation  = True,
                     medha_actions = True, seed=2137, disable_line = -1, conn_matrix = False,
-                    substation_actions = False, greedy_agent = False, graph_obs = False,  **kwargs):
+                    substation_actions = False, greedy_agent = False, graph_obs = False, combine_rewards =False,
+                    **kwargs):
     """
     Create a gym environment from a grid2op environment.
 
@@ -468,7 +481,18 @@ def create_gym_env(env_name = "rte_case14_realistic" , keep_obseravations = None
         The original grid2op environment.
     """
 
-    env = grid2op.make(env_name, reward_class = ScaledL2RPNReward, test = False, backend = LightSimBackend(), **kwargs)
+    if combine_rewards:
+        env = grid2op.make(env_name, reward_class = CombinedReward, test = False, backend = LightSimBackend(), **kwargs)
+        cr = env.get_reward_instance()
+        cr.addReward("LinesReconnectedReward", LinesReconnectedReward(), 0.333)
+        cr.addReward("CloseToOverflowReward", CloseToOverflowReward(), 0.333)
+        cr.addReward("ScaledL2RPNReward", ScaledL2RPNReward(), 0.333)
+        #cr.addReward("DistanceReward", DistanceReward(), 1.0)
+        cr.initialize(env)
+    else:
+        env = grid2op.make(env_name, reward_class = ScaledL2RPNReward, test = False, backend = LightSimBackend(), **kwargs)
+        
+    logging.info(f"The reward range is {env.reward_range}")
     logging.info(f"Using {len(env.chronics_handler.subpaths)} chronics.")
     if seed is not None:
         logging.info(f"Setting the env seed to {seed}")
