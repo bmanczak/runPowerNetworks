@@ -6,30 +6,37 @@ env_config: &env_config
   act_on_single_substation: True # ignored if medha = True
   medha_actions: False
   use_parametric: False 
-  rho_threshold: 0.9
+  rho_threshold: 0.95 #!choice [0.9, 0.95, 1, 1.05]
   scale: True
   run_until_threshold: True 
-  reward_scaling_factor: 5 #!choice [5,10,20]
+  reward_scaling_factor: 3 #!choice [2,4,6,8] #!choice [5,10,20]
   log_reward: False
   disable_line: -1 #!grid_search [7,8,9, 11,14,15,17,19] # check different disabled lines
   substation_actions: True
   greedy_agent : True
 
+hidden_dim_substation_model_model: &hidden_size 256 #!choice [128,256,512]
+Q_model: &Q_model
+  fcnet_hiddens: [*hidden_size, *hidden_size]
+        
+policy_model: &policy_model
+  fcnet_hiddens: [*hidden_size, *hidden_size]
+  
 tune_config:
   env: Grid_Gym_Greedy
   env_config: *env_config  # config to pass to env class
   log_level: WARN
   framework: torch
-  seed : 420
-  train_batch_size: 256 #256
-  twin_q: True # defualt True
+  seed : !choice [0, 1, 42, 69, 420, 666, 1234, 2137, 3456, 5678, 9876, 12345, 23456, 34567, 45678, 56789, 67890, 78901, 890]
+  train_batch_size: 256 #!choice [256,512] #256
+  twin_q: !choice [False, True] # defualt True
+  Q_model: *Q_model
+  policy_model: *policy_model
   prioritized_replay: True # default False
-  lr: 0.0005
   optimization: 
-        actor_learning_rate: 0.0005 #0.001 
-        critic_learning_rate: 0.0005 #0.001
-        entropy_learning_rate: 0.0001 #0.0001
-  grad_clip: 10
-  learning_starts: 256 # 1000
+        actor_learning_rate: 0.0005 # !choice [0.0005, 0.00005] #0.001 
+        critic_learning_rate: 0.0005 #!choice [0.0005, 0.00005] #0.001
+        entropy_learning_rate: 0.0005 #!choice [0.001, 0.0001] #0.0001
+  learning_starts: 2048 #!choice [512, 1024] # 1000
   num_workers : 6 #10 #8
   callbacks : LogDistributionsCallback

@@ -10,23 +10,23 @@ env_config: &env_config
   rho_threshold: 0.9
   scale: True
   run_until_threshold: True # not implemented yet
-  reward_scaling_factor: !grid_search [3,5,10,20,30,50]
+  reward_scaling_factor: 3 #!choice [5,10,30,50, 100]
   log_reward: False
+  combine_rewards: False
 
 tune_config:
   env: Grid_Gym
   env_config: *env_config  # config to pass to env class
-  log_level: WARN
+  log_level: INFO
   framework: torch
-  seed : 2137
-  tau: 0.0005
+  seed : !choice [21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50]
   train_batch_size: 256
-  lr: 0.0005
-  prioritized_replay: !choice [True, False] # default False
+  lr: 0.0005 #!choice [0.0001, 0.001]
+  prioritized_replay: True #!choice [True, False] # default False
   optimization: 
-        actor_learning_rate: 0.003
-        critic_learning_rate: 0.003
-        entropy_learning_rate: 0.00003
+        actor_learning_rate: 0.003 #!choice [0.0001, 0.001, 0.00001] #0.003 
+        critic_learning_rate:  0.003 #!choice [0.0001, 0.001, 0.00001]
+        entropy_learning_rate: 0.0003 # one zero less than in intial solve env #!choice [0.0001, 0.001, 0.00001]
   learning_starts: 2048
   num_workers : 10 #8
   callbacks : LogDistributionsCallback
