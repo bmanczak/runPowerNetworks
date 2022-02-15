@@ -204,7 +204,14 @@ if __name__ == '__main__':
                 day_records = empty_records(obs_vect_size)
                 continue
                 
-            obs = env.get_obs()
+            try:
+                obs = env.get_obs()
+            except Exception as e:
+                logger.warning(f'Exception {e} at step {env.nb_time_step}')
+                print(f'Exception {e} at step {env.nb_time_step}')
+                info = skip_to_next_day(env, num, disable_line)
+                day_records = empty_records(obs_vect_size)
+
             
             #reset topology at midnight, store days' records, reset days' records
             if env.nb_time_step%ts_in_day == ts_in_day-1:
