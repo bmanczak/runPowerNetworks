@@ -1,0 +1,85 @@
+
+                        
+env_config: &env_config
+  env_name: rte_case14_realistic
+  keep_actions: [change_bus]
+  keep_observations : [rho, gen_p, load_p, p_or, p_ex, timestep_overflow, maintenance , topo_vect]
+  convert_to_tuple: True # ignored if act_on_singe or medha_actions
+  act_on_single_substation: True # ignored if medha = True
+  medha_actions: True
+  rho_threshold: 0
+  use_parametric: False 
+  rho_threshold: 0.9
+  scale: True
+  run_until_threshold: True # not implemented yet
+  log_reward: False
+  disable_line: -1 #!grid_search [7,8,9, 11,14,15,17,19] # check different disabled lines
+  substation_actions: True
+  greedy_agent : True
+  conn_matrix: True
+
+
+hidden_dim_substation_model_model: &hidden_dim_substation_model_model 32 #!choice [64,128]
+
+node_model_config: &node_model_config
+  hidden_dim: *hidden_dim_substation_model_model #64
+  nheads: 4
+  num_layers: 1
+  dropout: 0
+
+substation_model_config: &substation_model_config
+  hidden_dim: *hidden_dim_substation_model_model
+  nheads: 4
+  num_layers: 1
+  dropout: 0
+
+actor_head_config: &actor_head_config
+  hidden_dim: *hidden_dim_substation_model_model
+  nheads: 4
+  num_layers: 1
+  dropout: 0
+
+critic_head_config: &critic_head_config
+  hidden_dim: *hidden_dim_substation_model_model
+  nheads: 4
+  num_layers: 1
+  dropout: 0
+
+model_config: &model_config
+  custom_model : substation_module
+  custom_model_config : 
+    num_features: 7
+    node_model_config: *node_model_config
+    substation_model_config: *substation_model_config
+    actor_head_config: *actor_head_config
+    critic_head_config: *critic_head_config
+    env_config: *env_config
+    pool_method: mean
+
+tune_config:
+  env: Grid_Gym_Greedy
+  env_config: *env_config  # config to pass to env class
+  model : *model_config
+  log_level: WARN
+  framework: torch
+  seed : 2137
+  lr: 0.0001 #0.0001 #tune.grid_search([1e-3 1e-41e-5])
+  kl_coeff: 0.2 #tune.quniform(0.1 0.3 0.05)
+  lambda: 0.96 #tune.quniform(0.9 1 0.02) 
+  vf_loss_coeff: 0.85 #tune.quniform(0.751.250.05)
+  vf_clip_param: 1500
+  rollout_fragment_length: 128 # 16
+  sgd_minibatch_size: 512 # 64
+  train_batch_size: 1024 #2048
+  ignore_worker_failures: True # continue if a worker crashes
+  callbacks : LogDistributionsCallback
+  #batch_mode: complete_episodes
+  # num_workers : 0 #8
+  # num_gpus: 1
+  num_gpus: 0
+  num_workers: 1  # 31 on a p2.8xlarge machine to get above results
+  # num_gpus_per_worker: 1 # or 0 to get above results
+  #num_envs_per_worker: 
+  #num_envs_per_worker : 32
+  
+

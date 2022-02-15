@@ -1,10 +1,27 @@
+# model_config: &model_config
+#   fcnet_hiddens: [256,256]
+#   fcnet_activation: relu
+  # use_lstm : True
+  # lstm_cell_size : 128
+  # lstm_use_prev_action: True 
+
+  # use_attention: True
+  # attention_layer_size: 128
+  # custom_model : mlp_lstm
+  # custom_model_config : 
+  #   use_parametric: True
+  #   env_obs_name: grid
+                         
 model_config: &model_config
-  fcnet_hiddens: [256,256]
+  fcnet_hiddens: [128,128,128]
   fcnet_activation: relu
-  custom_model : fcn
-  custom_model_config : 
-    use_parametric: False
-    env_obs_name: grid
+  use_lstm : True
+  lstm_cell_size : 128
+  max_seq_len : 4
+  # custom_model : fcn
+  # custom_model_config : 
+  #   use_parametric: False
+  #   env_obs_name: grid
                          
 env_config: &env_config
   env_name: rte_case14_realistic
@@ -13,34 +30,28 @@ env_config: &env_config
   convert_to_tuple: True # ignored if act_on_singe or medha_actions
   act_on_single_substation: True # ignored if medha = True
   medha_actions: True
+  rho_threshold: 0
   use_parametric: False 
   rho_threshold: 0.9
   scale: True
   run_until_threshold: True # not implemented yet
-  log_reward: False
-  disable_line: -1 #!grid_search [7,8,9, 11,14,15,17,19] # check different disabled lines
-  substation_actions: True
-  greedy_agent : True
-  conn_matrix: True
 
 
 tune_config:
-  env: Grid_Gym_Greedy
+  env: Grid_Gym
   env_config: *env_config  # config to pass to env class
   model : *model_config
   log_level: WARN
   framework: torch
-  seed : 420 #!grid_search [0,1,2]
-  lr: 0.0001 #!choice [0.001, 0.0001] #tune.grid_search([1e-3 1e-41e-5])
-  kl_coeff: 0.2 #!choice [0.15, 0.3, 0.2, 0.25]
-  lambda:  0.95 #!quniform [0.94, 0.96, 0.01] 
-  vf_loss_coeff: 0.9 #!quniform [0.75,1,0.05]
+  seed : 2137
+  lr: !choice [0.001, 0.0001] #tune.grid_search([1e-3 1e-41e-5])
+  kl_coeff: !choice [0.15, 0.3, 0.2, 0.25]
+  lambda: !quniform [0.94, 0.96, 0.01] 
+  vf_loss_coeff: !quniform [0.75,1,0.05]
   vf_clip_param: 1500
   rollout_fragment_length: 64 # 16
   sgd_minibatch_size: 128 # 64
   train_batch_size: 256 #2048
   ignore_worker_failures: True # continue if a worker crashes
-  num_workers : 4 #8
- #batch_mode: complete_episodes 
+  num_workers : 6 #8
   callbacks : LogDistributionsCallback
-  gamma: 0.999
