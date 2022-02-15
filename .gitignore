@@ -141,3 +141,13 @@ settings.json
 #Job files
 *.job
 eval_sac_lines_paths.txt
+
+# Notebooks
+
+/notebooks
+
+# Some local scripts
+custom_callback_toy.py
+custom_policy.py
+custom_trainer.py
+example_two_step.py

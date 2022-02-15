@@ -15,7 +15,7 @@ env_config: &env_config
   medha_actions: True
   rho_threshold: 0
   use_parametric: False 
-  rho_threshold: 0.9
+  rho_threshold: 0 #0.9
   scale: True
   run_until_threshold: True 
   log_reward: False
@@ -38,5 +38,5 @@ tune_config:
   sgd_minibatch_size: 128 #!choice [256,512] # 64
   train_batch_size: 256 #!choice [1024, 2048] #2048
   ignore_worker_failures: True # continue if a worker crashes
-  num_workers : 10 #8
+  num_workers : 4 #8
   callbacks : LogDistributionsCallback

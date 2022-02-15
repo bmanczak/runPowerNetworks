@@ -15,7 +15,7 @@ from models.mlp import SimpleMlp
 
 def run_eval(agent_type = "ppo", checkpoint_path = None, checkpoint_num = None,
              nb_episode = 10, save_path = None, nb_core = 1,
-            episode_id = False, scale_obs = True, random_sample = False):
+             episode_id = False, scale_obs = True, random_sample = False, pbar = False, trainer_type = "ppo"):
 
     """
     This function will run the evaluation of the agent.
@@ -42,6 +42,10 @@ def run_eval(agent_type = "ppo", checkpoint_path = None, checkpoint_num = None,
     scale_obs: bool
         If True the observation will be scaled with 
         the scaling arrays from grid2op_env
+    random_sample: bool
+        If True the agent will be trained with a random sample of the chronics.
+    pbar: bool
+        If True a progress bar will be displayed. Not recommended with Lisa.
     
     Raises:
         ValueError: If the agent_type is not supported.
@@ -67,7 +71,8 @@ def run_eval(agent_type = "ppo", checkpoint_path = None, checkpoint_num = None,
 
     agent, env_config = restore_agent(path = checkpoint_path,
                    checkpoint_num = checkpoint_num,
-                   return_env_config = True)
+                   return_env_config = True, 
+                   trainer_type= trainer_type)  
 
     if env_config["greedy_agent"]:
         rllib_env = Grid_Gym_Greedy(env_config)
@@ -94,7 +99,7 @@ def run_eval(agent_type = "ppo", checkpoint_path = None, checkpoint_num = None,
                  path_save=save_path, 
                 env_seeds = [42]*nb_episode,
                 episode_id= episode_id,
-                pbar = True)
+                pbar = pbar)
 
     num_steps_completed = []
     for _, chron_id, cum_reward, nb_time_step, max_ts in res:
@@ -119,6 +124,7 @@ if "__main__" == __name__:
     parser.add_argument("--episode_id", type=list, default=None, help="Id of the episode to run")
     parser.add_argument("--scale_obs", type=bool, default=True, help="Scale the observation")
     parser.add_argument("--random_sample", type=bool, default=False, help="Random sample episode id")
+    parser.add_argument("--trainer_type", type=str, default="ppo", help="What type of model is being evaluated")
     args = parser.parse_args()
 
     run_eval(**vars(args))

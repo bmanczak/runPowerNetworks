@@ -34,21 +34,13 @@ substation_model_config: &substation_model_config
   dropout: 0
 
 actor_head_config: &actor_head_config
-<<<<<<< HEAD
-  hidden_dim: 64 #*hidden_dim_substation_model_model
-=======
   hidden_dim: *hidden_dim_substation_model_model
->>>>>>> a56cea4496232dd32b8b15a8616f9108da1fdfd0
   nheads: 4
   num_layers: 1
   dropout: 0
 
 critic_head_config: &critic_head_config
-<<<<<<< HEAD
-  hidden_dim: 64 #*hidden_dim_substation_model_model
-=======
   hidden_dim: *hidden_dim_substation_model_model
->>>>>>> a56cea4496232dd32b8b15a8616f9108da1fdfd0
   nheads: 4
   num_layers: 1
   dropout: 0
@@ -64,49 +56,30 @@ model_config: &model_config
     env_config: *env_config
     pool_method: mean
 
-# model_config: &model_config
-#   custom_model : substation_module
-#   custom_model_config : 
-#     num_features: 7
-#     hidden_dim: 128
-#     nheads: 4
-#     num_layers: 3
-#     dropout : 0
-#     mask_nodes: None
-#     env_config: *env_config
-
 tune_config:
   env: Grid_Gym_Greedy
   env_config: *env_config  # config to pass to env class
-<<<<<<< HEAD
+  model : *model_config
   log_level: WARN
-=======
-  Q_model : *model_config
-  policy_model : *model_config
-  log_level: WARN
-  _disable_preprocessor_api: True
->>>>>>> a56cea4496232dd32b8b15a8616f9108da1fdfd0
   framework: torch
-  seed : 420
-  train_batch_size: 256 #256
-  twin_q: True # defualt True
-  prioritized_replay: True # default False
-  lr: 0.0005
-  optimization: 
-        actor_learning_rate: 0.0005 #0.001 
-        critic_learning_rate: 0.0005 #0.001
-        entropy_learning_rate: 0.0001 #0.0001
-<<<<<<< HEAD
-  grad_clip: 10
-  learning_starts: 256 # 1000
-  num_workers : 2  #10 #8
-  num_gpus: 2
-  num_envs_per_worker : 16
-=======
-  #grad_clip: 10
-  learning_starts: 256 # 1000
-  num_workers : 1  #10 #8
-  num_gpus: 0
-  #num_envs_per_worker : 16
->>>>>>> a56cea4496232dd32b8b15a8616f9108da1fdfd0
+  seed : 2137
+  lr: 0.0001 #0.0001 #tune.grid_search([1e-3 1e-41e-5])
+  kl_coeff: 0.2 #tune.quniform(0.1 0.3 0.05)
+  lambda: 0.96 #tune.quniform(0.9 1 0.02) 
+  vf_loss_coeff: 0.85 #tune.quniform(0.751.250.05)
+  vf_clip_param: 1500
+  rollout_fragment_length: 128 # 16
+  sgd_minibatch_size: 512 # 64
+  train_batch_size: 1024 #2048
+  ignore_worker_failures: True # continue if a worker crashes
   callbacks : LogDistributionsCallback
+  #batch_mode: complete_episodes
+  # num_workers : 0 #8
+  # num_gpus: 1
+  num_gpus: 0
+  num_workers: 1  # 31 on a p2.8xlarge machine to get above results
+  # num_gpus_per_worker: 1 # or 0 to get above results
+  #num_envs_per_worker: 
+  #num_envs_per_worker : 32
+  
+

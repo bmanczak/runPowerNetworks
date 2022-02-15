@@ -6,7 +6,11 @@ env_config: &env_config
   act_on_single_substation: True # ignored if medha = True
   medha_actions: False
   use_parametric: False 
+<<<<<<< HEAD
   rho_threshold: 0.95 #!choice [0.9, 0.95, 1, 1.05]
+=======
+  rho_threshold: 1 #0.9
+>>>>>>> a56cea4496232dd32b8b15a8616f9108da1fdfd0
   scale: True
   run_until_threshold: True 
   reward_scaling_factor: 3 #!choice [2,4,6,8] #!choice [5,10,20]
@@ -14,6 +18,7 @@ env_config: &env_config
   disable_line: -1 #!grid_search [7,8,9, 11,14,15,17,19] # check different disabled lines
   substation_actions: True
   greedy_agent : True
+  combine_rewards: True
 
 hidden_dim_substation_model_model: &hidden_size 256 #!choice [128,256,512]
 Q_model: &Q_model
