@@ -64,14 +64,14 @@ if __name__ == "__main__":
     parser.add_argument("--use_tune", type=bool, default=True, help="Use Tune to train the agent")
     parser.add_argument("--project_name", type=str, default="testing_callback_grid", help="Name of the to be saved in WandB")
     parser.add_argument("--num_iters", type=int, default=1000, help="Number of iterations to train the agent for.")
-    parser.add_argument("--num_workers", type=int, default=1, help="Number of workers to use for training.")
+    parser.add_argument("--num_workers", type=int, default=-1, help="Number of workers to use for training.")
     parser.add_argument("--num_samples", type=int, default=1, help="Number of samples to use for training.")
     parser.add_argument("--checkpoint_freq", type=int, default=25, help="Number of iterations between checkpoints.")
     parser.add_argument("--group" , type=str, default=None, help="Group to use for training.")
     parser.add_argument("--resume", type=bool, default=False, help="Resume training from a checkpoint. If yes, group must be specified.")
     parser.add_argument("--grace_period", type = int, default = 400, help = "Minimum number of timesteps before a trial can be early stopped.")
     parser.add_argument("--num_iters_no_improvement", type = int, default = 200, help = "Minimum number of timesteps before a trial can be early stopped.")
-
+    parser.add_argument("--seed", type = int, default = -1, help = "Seed to use for training.")
 
     args = parser.parse_args()
 
@@ -81,6 +81,10 @@ if __name__ == "__main__":
         logging.info(f"{arg.upper()}: {getattr(args, arg)}")
 
     config = preprocess_config(yaml.load(open(args.algorithm_config_path), Loader=get_loader()))["tune_config"]
+    if args.num_workers != -1: # overwrite config if necessary
+        config["num_workers"] = args.num_workers
+    if args.seed != -1:
+        config["seed"] = args.seed
 
     if args.algorithm == "ppo":
         trainer = ppo.PPOTrainer
@@ -94,9 +98,9 @@ if __name__ == "__main__":
         reporter = CLIReporter()
         stopper = CombinedStopper(
             MaximumIterationStopper(max_iter = args.num_iters),
-            MaxNotImprovedStopper(metric = "episode_reward_mean",
-                                    grace_period = args.grace_period, 
-                                    num_iters_no_improvement = args.num_iters_no_improvement)
+            # MaxNotImprovedStopper(metric = "episode_reward_mean",
+            #                         grace_period = args.grace_period, 
+            #                         num_iters_no_improvement = args.num_iters_no_improvement)
                                     )
         
         analysis = ray.tune.run(
@@ -117,7 +121,7 @@ if __name__ == "__main__":
                 loggers= [CustomTBXLogger],
                 keep_checkpoints_num = 5,
                 checkpoint_score_attr="episode_reward_mean",
-                verbose = 2,
+                verbose = 1,
                 resume = args.resume
                 )
         ray.shutdown()

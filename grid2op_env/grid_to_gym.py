@@ -358,10 +358,10 @@ class Grid_Gym(gym.Env):
 
         elif self.run_until_threshold:
             self.begin_step = self.steps
-            cum_reward = reward
+            cum_reward = 0 #reward
             while (max(obs["rho"]) < self.rho_threshold) and (not done):
-                obs, reward, done, info = self.env_gym.step(self.do_nothing_actions[0])
                 cum_reward += reward
+                obs, reward, done, info = self.env_gym.step(self.do_nothing_actions[0])
                 self.steps += 1
             #reward = ((self.steps - self.begin_step)/100)*50 # experiment for sac
             # do_nothing_steps = max(1, self.steps - self.begin_step)
