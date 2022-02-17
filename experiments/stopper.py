@@ -41,7 +41,7 @@ class MaxNotImprovedStopper(Stopper):
         self._metric = metric
         self._mode = mode
         self._num_iters_no_improvement = num_iters_no_improvement
-        self._current_max = float("-inf")
+        self._current_max_trial = defaultdict(lambda: float("-inf"))
         self._iters_no_improvement = 0
 
         self._percent_improve = percent_improve
@@ -56,21 +56,29 @@ class MaxNotImprovedStopper(Stopper):
                     f"Got: {mode}")
 
         self._iter = defaultdict(lambda: 0)
-    
+
     def __call__(self, trial_id: str, result: Dict):
         metric_result = result.get(self._metric)
         # self._trial_results[trial_id].append(metric_result)
         self._iter[trial_id] += 1
-        
-        if metric_result*(1+ self._percent_improve) > self._current_max:
-            self._current_max = metric_result
+        print("the trial id is", trial_id)
+        print("the current max is", self._current_max_trial[trial_id])
+        print("the metric result is", metric_result)
+        print("iteration without improvement and the max", self._iters_no_improvement, self._num_iters_no_improvement)
+
+        if metric_result > self._current_max_trial[trial_id] * (1 + self._percent_improve):
+            self._current_max_trial[trial_id] = metric_result
             self._iters_no_improvement = 0
+            print("not doing anything")
         else:
+            print("adding one to iters no improvement")
             self._iters_no_improvement += 1
 
         # If still in grace period, do not stop yet
         if self._iter[trial_id] < self._grace_period:
+            print("in grace period")
             return False
+        
 
         # If metric threshold value not reached, do not stop yet
         if self._metric_threshold is not None:
@@ -81,7 +89,7 @@ class MaxNotImprovedStopper(Stopper):
                 return False
         # If max has no been surpased in num_iters_no_improvement, early stop.
         if self._num_iters_no_improvement < self._iters_no_improvement:
-            logger.info(f"Terminating the trial early with max value of {self._metric}: {self._current_max}")
+            logger.info(f"Terminating the trial early with max value of {self._metric}: {self._current_max_trial[trial_id]}")
             return True 
         return False # if else, return false 
 

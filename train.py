@@ -98,9 +98,9 @@ if __name__ == "__main__":
         reporter = CLIReporter()
         stopper = CombinedStopper(
             MaximumIterationStopper(max_iter = args.num_iters),
-            # MaxNotImprovedStopper(metric = "episode_reward_mean",
-            #                         grace_period = args.grace_period, 
-            #                         num_iters_no_improvement = args.num_iters_no_improvement)
+            MaxNotImprovedStopper(metric = "episode_reward_mean",
+                                    grace_period = args.grace_period, 
+                                    num_iters_no_improvement = args.num_iters_no_improvement)
                                     )
         
         analysis = ray.tune.run(
