@@ -61,25 +61,16 @@ class MaxNotImprovedStopper(Stopper):
         metric_result = result.get(self._metric)
         # self._trial_results[trial_id].append(metric_result)
         self._iter[trial_id] += 1
-        print("the trial id is", trial_id)
-        print("the current max is", self._current_max_trial[trial_id])
-        print("the metric result is", metric_result)
-        print("iteration without improvement and the max", self._iters_no_improvement, self._num_iters_no_improvement)
-
         if metric_result > self._current_max_trial[trial_id] * (1 + self._percent_improve):
             self._current_max_trial[trial_id] = metric_result
             self._iters_no_improvement = 0
-            print("not doing anything")
         else:
-            print("adding one to iters no improvement")
             self._iters_no_improvement += 1
 
         # If still in grace period, do not stop yet
         if self._iter[trial_id] < self._grace_period:
-            print("in grace period")
             return False
         
-
         # If metric threshold value not reached, do not stop yet
         if self._metric_threshold is not None:
             if self._mode == "min" and metric_result > self._metric_threshold:
