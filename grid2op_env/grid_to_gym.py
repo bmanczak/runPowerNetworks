@@ -219,6 +219,7 @@ class RoutingTopologyGreedy(GreedyAgent):
         self.tested_action = self._get_tested_action(observation, sub_id)
         if len(self.tested_action) > 1:
             self.resulting_rewards = np.full(shape=len(self.tested_action), fill_value=np.NaN, dtype=dt_float)
+            self.resulting_max_rho = np.full(shape=len(self.tested_action), fill_value=np.NaN, dtype=dt_float)
             for i, action in enumerate(self.tested_action):
                 #print("type of observation", type(observation))
                 simul_obs, simul_reward, simul_has_error, simul_info = observation.simulate(action)
@@ -226,9 +227,11 @@ class RoutingTopologyGreedy(GreedyAgent):
                 # if (simul_obs.topo_vect == observation.topo_vect).all():
                 #     self.resulting_rewards[i] = float("-inf")
                 # else:
+                self.resulting_max_rho[i] = simul_obs.rho.max() if not simul_has_error else float("inf")
                 self.resulting_rewards[i] = simul_reward
-            reward_idx = int(np.argmax(self.resulting_rewards))  # rewards.index(max(rewards))
-            best_action = self.tested_action[reward_idx]
+            #reward_idx = int(np.argmax(self.resulting_rewards))  # rewards.index(max(rewards))
+            min_rho_idx = int(np.argmin(self.resulting_max_rho))
+            best_action = self.tested_action[min_rho_idx]
         else:
            # print("No op action is taken")
             best_action = self.tested_action[0]

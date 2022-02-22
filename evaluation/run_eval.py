@@ -74,13 +74,13 @@ def run_eval(agent_type = "ppo", checkpoint_path = None, checkpoint_num = None,
                    return_env_config = True, 
                    trainer_type= trainer_type)  
 
-    if env_config["greedy_agent"]:
+    if env_config.get("greedy_agent", False):
         rllib_env = Grid_Gym_Greedy(env_config)
     else:
         rllib_env = Grid_Gym(env_config)
     
     if env_config["run_until_threshold"]:
-        if env_config["greedy_agent"]:
+        if env_config.get("greedy_agent", False):
             wrapped_agent = AgentThresholdEnvGreedy(rllib_env, agent,
                              rho_threshold = env_config["rho_threshold"])
         else:
