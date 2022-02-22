@@ -5,9 +5,8 @@ env_config: &env_config
   convert_to_tuple: True # ignored if act_on_singe or medha_actions
   act_on_single_substation: True # ignored if medha = True
   medha_actions: True
-  rho_threshold: 0
   use_parametric: False 
-  rho_threshold: 0.9
+  rho_threshold: 0.95
   scale: True
   run_until_threshold: True # not implemented yet
   reward_scaling_factor: 3 #!choice [5,10,30,50, 100]
@@ -24,9 +23,9 @@ tune_config:
   lr: 0.0005 #!choice [0.0001, 0.001]
   prioritized_replay: True #!choice [True, False] # default False
   optimization: 
-        actor_learning_rate: 0.003 #!choice [0.0001, 0.001, 0.00001] #0.003 
-        critic_learning_rate:  0.003 #!choice [0.0001, 0.001, 0.00001]
-        entropy_learning_rate: 0.0003 # one zero less than in intial solve env #!choice [0.0001, 0.001, 0.00001]
+        actor_learning_rate: 0.0005 #!choice [0.0001, 0.001, 0.00001] #0.003 
+        critic_learning_rate: 0.0005 #!choice [0.0001, 0.001, 0.00001]
+        entropy_learning_rate: 0.00005 # one zero less than in intial solve env #!choice [0.0001, 0.001, 0.00001]
   learning_starts: 2048
-  num_workers : 10 #8
+  num_workers : !choice [8,10,12,14] #!choice [2,6,10] 
   callbacks : LogDistributionsCallback
