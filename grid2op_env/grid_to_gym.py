@@ -26,10 +26,8 @@ from grid2op_env.utils import CustomDiscreteActions, get_sub_id_to_action
 from grid2op_env.rewards import ScaledL2RPNReward, CloseToOverflowReward, LinesReconnectedReward, DistanceReward
 from grid2op_env.utils import get_sub_id_to_elem_id, reverse_dict, get_sub_id_to_action
 from models.utils import vectorize_obs
+from models.greedy_agent import RoutingTopologyGreedy
 from definitions import ROOT_DIR
-
-
-
 
 class CustomGymEnv(GymEnv):
     """
@@ -142,101 +140,6 @@ class SubstationGreedyEnv(CustomGymEnv):
         if hasattr(self, "observation_space") and self.observation_space is not None:
             self.observation_space.close()
         self.observation_space = None
-
-class RoutingTopologyGreedy(GreedyAgent):
-    """
-    This is a :class:`GreedyAgent` example, which will attempt to reconfigure the substations connectivity.
-
-    It will choose among:
-
-      - doing nothing
-      - changing the topology of one substation.
-
-    To choose, it will simulate the outcome of all actions, and then chose the action leading to the best rewards.
-
-    """
-    def __init__(self, action_space, sub_id_to_action_dict):
-        """[summary]
-
-        Args:
-            action_space ([type]): [description]
-            sub_id_to_action_dict ([type]): [description]
-            num_actions ([type], optional): [description]. Defaults to None.
-        """
-        GreedyAgent.__init__(self, action_space)
-        self.tested_action = None
-        self.sub_id_to_action = sub_id_to_action_dict
-
-    def get_num_to_sub(self):
-        """
-        In case we have less actions than substations we must map the action
-        integer to a substation. Note that the action integer is reserved for the do-nothing action.
-        """
-        self.num_to_sub = {i+1:k for i,k in enumerate(self.sub_id_to_action.keys())}
-        self.num_to_sub[0] = 0
-        print("the num to sub is", self.num_to_sub)
-
-    def _get_tested_action(self, observation, action_int):
-        #if self.tested_action is None:
-        #print("i am here", self.sub_id_to_action)
-        self.sub_id_to_action[0] = [self.action_space({})] # list so it is compatible with greedy agent
-        #print("action",action_int)
-        sub_id = self.num_to_sub[action_int]
-        self.tested_action = self.sub_id_to_action[sub_id]
-
-        # all_actions = []
-        # for act_list in self.sub_id_to_action.values():
-        #     all_actions += act_list
-        # self.tested_action = all_actions
-
-        return self.tested_action
-
-    def act(self, observation, sub_id, done=False):
-        """
-        By definition, all "greedy" agents are acting the same way. The only thing that can differentiate multiple
-        agents is the actions that are tested.
-
-        These actions are defined in the method :func:`._get_tested_action`. This :func:`.act` method implements the
-        greedy logic: take the actions that maximizes the instantaneous reward on the simulated action.
-
-        Parameters
-        ----------
-        observation: :class:`grid2op.Observation.Observation`
-            The current observation of the :class:`grid2op.Environment.Environment`
-
-        reward: ``float``
-            The current reward. This is the reward obtained by the previous action
-
-        done: ``bool``
-            Whether the episode has ended or not. Used to maintain gym compatibility
-
-        Returns
-        -------
-        res: :class:`grid2op.Action.Action`
-            The action chosen by the bot / controller / agent.
-
-        """
-        self.tested_action = self._get_tested_action(observation, sub_id)
-        if len(self.tested_action) > 1:
-            self.resulting_rewards = np.full(shape=len(self.tested_action), fill_value=np.NaN, dtype=dt_float)
-            self.resulting_max_rho = np.full(shape=len(self.tested_action), fill_value=np.NaN, dtype=dt_float)
-            for i, action in enumerate(self.tested_action):
-                #print("type of observation", type(observation))
-                simul_obs, simul_reward, simul_has_error, simul_info = observation.simulate(action)
-                #print(simul_obs.topo_vect)
-                # if (simul_obs.topo_vect == observation.topo_vect).all():
-                #     self.resulting_rewards[i] = float("-inf")
-                # else:
-                self.resulting_max_rho[i] = simul_obs.rho.max() if not simul_has_error else float("inf")
-                self.resulting_rewards[i] = simul_reward
-            #reward_idx = int(np.argmax(self.resulting_rewards))  # rewards.index(max(rewards))
-            min_rho_idx = int(np.argmin(self.resulting_max_rho))
-            best_action = self.tested_action[min_rho_idx]
-        else:
-           # print("No op action is taken")
-            best_action = self.tested_action[0]
-            #print(best_action)
-        return best_action
 
 class Grid_Gym(gym.Env):
     """

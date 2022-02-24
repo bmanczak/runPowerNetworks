@@ -2,17 +2,26 @@ import logging
 import re 
 import json
 import os
+import logging
 
 from ray.rllib.agents import ppo, sac # import the type of agents
 from grid2op_env.grid_to_gym import Grid_Gym
+from typing import Tuple, Union, Optional
 
-def restore_agent(path, checkpoint_num = None, modify_keys = None, return_env_config = True, trainer_type = "ppo"):
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+
+def restore_agent(trainer_type:str, path:str, checkpoint_num:Optional[int] = None,
+                 modify_keys: Optional[bool] = None, ) \
+                        -> Tuple[Union[ppo.PPOTrainer, sac.SACTrainer], dict]:
     """
     Function that restores the agent from tune checkpointwith 
     correct hyperparameters.
     
     Keyword arguments:
     ----------
+    trainer_type: str 
+        Type of trainer to use. "ppo" and "sac" are supported.
     path: str
         Path that contains (1) the params.json and 
         (2) folders that contain checkpoints. Note that
@@ -24,10 +33,6 @@ def restore_agent(path, checkpoint_num = None, modify_keys = None, return_env_co
         the checkpoint with the highest number is restored.
     modify_keys: dict (Optional)
         Keys to add/change in the config.
-    return_env_config: bool (Optional)
-        If True, returns the env_config.
-    trainer_type: str (Optional)
-        Type of trainer to use. "ppo" and "sac" are supported.
     
     Returns:
     --------
@@ -41,8 +46,7 @@ def restore_agent(path, checkpoint_num = None, modify_keys = None, return_env_co
     ----------
     agent, env_config = restore_agent(path = "/Users/blazejmanczak/Desktop/try_this/PPO_Grid_Gym_e07fb_00004_4_clip_param=0.2,lambda=0.94,lr=0.001,vf_loss_coeff=0.9_2021-12-04_03-59-36",
                    checkpoint_num = 900,
-                   modify_keys={"env_config": {"scale": True}},
-                   return_env_config = True)
+                   modify_keys={"env_config": {"scale": True}})
 
     rllib_env = Grid_Gym(env_config);
     """
@@ -50,6 +54,7 @@ def restore_agent(path, checkpoint_num = None, modify_keys = None, return_env_co
     config_params = json.load(open(os.path.join(path, "params.json")))
     config_params.pop("callbacks", None)
     env_config = config_params["env_config"]
+
     # Optionally modify the keys 
     if modify_keys is not None:
         for key, val in modify_keys.items():
@@ -70,7 +75,8 @@ def restore_agent(path, checkpoint_num = None, modify_keys = None, return_env_co
 
     checkpoint_path = os.path.join(path,f"checkpoint_{str(0)*(6-len(str(checkpoint_num)))}{checkpoint_num}", \
                       f"checkpoint-{checkpoint_num}")
-    print(f"Restoring checkpoint {checkpoint_num} from {checkpoint_path}")
+
+    logger.info(f"Restoring checkpoint {checkpoint_num} from {checkpoint_path}")
 
     if trainer_type == "ppo":
         agent = ppo.PPOTrainer(env=Grid_Gym,
@@ -81,8 +87,4 @@ def restore_agent(path, checkpoint_num = None, modify_keys = None, return_env_co
 
     agent.restore(checkpoint_path);
 
-    if return_env_config:
-        return agent, env_config
-    else:
-        return agent
-    
+    return agent, env_config

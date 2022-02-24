@@ -134,6 +134,7 @@ dmypy.json
 settings.json
 /agents_log
 /runner_log
+*/eval_results
 
 # SLURM outputs
 *.out
