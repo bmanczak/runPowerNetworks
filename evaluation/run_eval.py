@@ -191,7 +191,7 @@ class EvaluationRunner:
                                         disable_line = env_config.get("disable_line", -1),
                                         conn_matrix = env_config.get("conn_matrix", False),
                                         substation_actions = env_config.get("substation_actions", False),
-                                        greedy_agent = env_config.get("greedy_agent", False),
+                                        greedy_agent = False, # has to be false to return the do nothing actions properly
                                         graph_obs = env_config.get("graph_obs", False),
                                         combine_rewards= env_config.get("combine_rewards", False))
                                     
