@@ -89,7 +89,7 @@ class EvaluationRunner:
                 self.save_path = os.path.join("evaluation/eval_results", f'greedy_{checkpoint_path.split("/")[-1]}')
             else:
                 self.save_path = os.path.join("evaluation/eval_results", f'{checkpoint_path.split("/")[-1]}')
-
+            self.save_path = f"{self.save_path}_{self.checkpoint_num}_{self.nb_episode}_{self.random_sample}"
         if not os.path.exists(self.save_path):
             os.makedirs(self.save_path)
     
@@ -139,8 +139,7 @@ class EvaluationRunner:
 
         actions = defaultdict(list)
         topo_vects = defaultdict(list) 
-        chronic_to_num_steps = defaultdict(int) 
-
+        chronic_to_num_steps = defaultdict(list) 
         for chronic_id in self.chronics_to_study:
             self.env.set_id(chronic_id)
 
@@ -151,28 +150,32 @@ class EvaluationRunner:
             done = False
             num_steps = 0
             obs = self.env.reset()
+            add_obs = False
             
             while not done:
                 num_steps += 1
                 act = self.wrapped_agent.act(obs)
+                if obs.rho.max() > self.env_config["rho_threshold"]: # save action taken above the threshold
+                    add_obs = True
+                    actions[chronic_id].append(act)
+                    
                 obs, reward, done, info = self.env.step(act)
 
-                # Only save the actions if the action is not a DoNothing
-                # stemming from the threshold
-                if obs.rho.max() > self.env_config["rho_threshold"]:    
-                    actions[chronic_id].append(act)
+                if add_obs: # save topo vector resulting from action above the threshold
                     topo_vects[chronic_id].append(obs.topo_vect)
+                    add_obs = False
+                    chronic_to_num_steps[chronic_id].append(num_steps)
 
-            chronic_to_num_steps[chronic_id] = num_steps
+            chronic_to_num_steps[chronic_id].append(num_steps)
         
-        np.save(os.path.join(self.save_path, f"actions_{self.checkpoint_num}_{self.nb_episode}_{self.random_sample}.npy"),
+        np.save(os.path.join(self.save_path, f"actions.npy"),
                 actions)
         np.save(os.path.join(self.save_path, f"topo_vects{self.checkpoint_num}_{self.nb_episode}_{self.random_sample}.npy"),
                 topo_vects)
         np.save(os.path.join(self.save_path, f"chronic_to_num_steps{self.checkpoint_num}_{self.nb_episode}_{self.random_sample}.npy"),
                 chronic_to_num_steps)
-
-        print("Mean number of steps completed over the tested chronis", np.mean(list(chronic_to_num_steps.values()))) 
+        
+        print("Mean number of steps completed over the tested chronis", np.mean([steps[-1] for chronic,steps in chronic_to_num_steps.items()]))  
         
         return actions, topo_vects, chronic_to_num_steps    
 
@@ -190,11 +193,11 @@ class EvaluationRunner:
                                         scale = env_config.get("scale", False),
                                         disable_line = env_config.get("disable_line", -1),
                                         conn_matrix = env_config.get("conn_matrix", False),
-                                        substation_actions = env_config.get("substation_actions", False),
+                                        substation_actions = False,
                                         greedy_agent = False, # has to be false to return the do nothing actions properly
                                         graph_obs = env_config.get("graph_obs", False),
                                         combine_rewards= env_config.get("combine_rewards", False))
-                                    
+               
         greedy_agent = ClassicGreedyAgent(org_env.action_space, action_list=all_actions_dict, do_nothing_idx=do_nothing_actions)
 
         return greedy_agent

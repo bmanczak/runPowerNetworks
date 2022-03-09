@@ -135,6 +135,7 @@ settings.json
 /agents_log
 /runner_log
 */eval_results
+*/figures
 
 # SLURM outputs
 *.out
