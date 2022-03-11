@@ -6,8 +6,25 @@ model_config: &model_config
     use_parametric: False
     env_obs_name: grid
                          
-env_config: &env_config
-  env_name: rte_case14_realistic
+env_config: &env_config_train
+  env_name: rte_case14_realistic_train
+  keep_actions: [change_bus]
+  keep_observations : [rho, gen_p, load_p, p_or, p_ex, timestep_overflow, maintenance , topo_vect]
+  convert_to_tuple: True # ignored if act_on_singe or medha_actions
+  act_on_single_substation: True # ignored if medha = True
+  medha_actions: True
+  use_parametric: False 
+  rho_threshold: 0.95
+  scale: True
+  run_until_threshold: True # not implemented yet
+  log_reward: False
+  disable_line: -1 #!grid_search [7,8,9, 11,14,15,17,19] # check different disabled lines
+  substation_actions: True
+  greedy_agent : True
+  conn_matrix: False
+
+env_config: &env_config_val
+  env_name: rte_case14_realistic_val
   keep_actions: [change_bus]
   keep_observations : [rho, gen_p, load_p, p_or, p_ex, timestep_overflow, maintenance , topo_vect]
   convert_to_tuple: True # ignored if act_on_singe or medha_actions
@@ -26,7 +43,7 @@ env_config: &env_config
 
 tune_config:
   env: Grid_Gym_Greedy
-  env_config: *env_config  # config to pass to env class
+  env_config: *env_config_train  # config to pass to env class
   model : *model_config
   log_level: INFO
   framework: torch
@@ -43,3 +60,8 @@ tune_config:
   ignore_worker_failures: True # continue if a worker crashes
   num_workers : !choice [2,4,6] #8
   callbacks : LogDistributionsCallback
+  evaluation_interval: 10
+  evaluation_num_episodes : 100
+  evaluation_config: 
+    env: Grid_Gym
+    env_config: *env_config_val # use the validation env
