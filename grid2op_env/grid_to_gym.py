@@ -388,7 +388,7 @@ def create_gym_env(env_name = "rte_case14_realistic" , keep_obseravations = None
     env: grid2op env
         The original grid2op environment.
     """
-
+    
     if combine_rewards:
         env = grid2op.make(env_name, reward_class = CombinedReward, test = False, backend = LightSimBackend(), **kwargs)
         cr = env.get_reward_instance()
@@ -399,7 +399,8 @@ def create_gym_env(env_name = "rte_case14_realistic" , keep_obseravations = None
         cr.initialize(env)
     else:
         env = grid2op.make(env_name, reward_class = ScaledL2RPNReward, test = False, backend = LightSimBackend(), **kwargs)
-        
+    
+    print(f"The environment has {len(env.chronics_handler.subpaths)} chronics.")
     logging.info(f"The reward range is {env.reward_range}")
     logging.info(f"Using {len(env.chronics_handler.subpaths)} chronics.")
     if seed is not None:
@@ -409,7 +410,7 @@ def create_gym_env(env_name = "rte_case14_realistic" , keep_obseravations = None
         env.seed(seed)
     if medha_actions:
         logging.info("Using the action space and thermal limits defined by Medha!")
-        if env_name != "rte_case14_realistic":
+        if "rte_case14_realistic" not in env_name:
             raise NotImplementedError("Medha action space is only implemented for rte_case14_realistic")
         thermal_limits = [1000,1000,1000,1000,1000,1000,1000, 760,450, 760,380,380,760,380,760,380,380,380,2000,2000]
         env.set_thermal_limit(thermal_limits)
@@ -444,7 +445,7 @@ def create_gym_env(env_name = "rte_case14_realistic" , keep_obseravations = None
                 c = 1.2 # constant to account that our max/min are underestimated
                 max_arr, min_arr = np.load(os.path.join(ROOT_DIR,
                                                 "grid2op_env/scaling_arrays",
-                                                env_name,
+                                                "rte_case14_realistic",
                                                 f"{attr}.npy"))#np.load(os.path.join(os.getcwd(), "/grid2op_env/scaling_arrays/", f"{attr}.npy"))
                 env_gym.observation_space = env_gym.observation_space.\
                                             reencode_space(attr,

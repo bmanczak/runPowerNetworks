@@ -81,7 +81,7 @@ class LogDistributionsCallback(DefaultCallbacks):
         changed_topo_vec = np.any(train_batch_new_obs[:, -56:]!=train_batch_obs[:, -56:], axis = -1)
         not_changed_topo_vec = 1 - changed_topo_vec
         non_terminal_actions = np.any(train_batch_new_obs[:, -56:] != -np.ones_like(train_batch_new_obs[:, -56:]), axis = -1)        
-        num_non_zero_actions = np.sum(changed_topo_vec*non_terminal_actions)    
+        num_non_zero_actions = np.sum(changed_topo_vec) #*non_terminal_actions)    
         # Log the proportion of actions that do not change the topology
         result["prop_topo_action_change"] = num_non_zero_actions/train_batch["actions"].shape[0]
         result["prop_explicit_do_nothing"] = np.sum((train_batch_actions == 0) & (non_terminal_actions==1 ))/np.sum(not_changed_topo_vec*non_terminal_actions)
@@ -104,7 +104,7 @@ class LogDistributionsCallback(DefaultCallbacks):
         for action, count in zip(unique, counts):
             action_distr_dic[str(action)] = count/num_non_zero_actions # action distr in percentage
         
-        del action_distr_dic[str(0)] # remove the do-nothing action from the action distr
+        #del action_distr_dic[str(0)] # remove the do-nothing action from the action distr
         result["action_distr"] = action_distr_dic
         result["num_non_zero_actions_tried"] = sum([1 for val in action_distr_dic.values() if val > 0])
         #print("time it took to count actions", time.time() - start_time)

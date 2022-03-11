@@ -304,7 +304,7 @@ def create_action_space(env,substation_ids=list(range(14)), disable_line = -1, r
     DN_actions_indices = []
     temp_index = 0
     for sub_id in substation_ids: # to loop through all substations
-        print("SUBSTATION NUMBER: %d" % sub_id)
+        #print("SUBSTATION NUMBER: %d" % sub_id)
         sub_elem, sub_nb_elem = get_obj_connect_to_subtation(env.get_obj_connect_to(None, sub_id).items(),
                                                             disable_line)
 
@@ -329,7 +329,7 @@ def create_action_space(env,substation_ids=list(range(14)), disable_line = -1, r
             for j in range(r,sub_nb_elem+1):  
                 # choosing (0,sub_nb_elem+1) will result 
                 # in alpha term but choosing (r,sub_nb_elem+1) results in alpha/2
-                print('Choosing '+ str(j)+ ' out of '+str(sub_nb_elem)) 
+                ##print('Choosing '+ str(j)+ ' out of '+str(sub_nb_elem)) 
                 #bionomial coefficiants
                 if(j==sub_nb_elem-1): # removing beta/2 term
                     # if it was entire "alpha" we would have to remove both 
@@ -339,7 +339,7 @@ def create_action_space(env,substation_ids=list(range(14)), disable_line = -1, r
                 combs=list(it.combinations(sub_elem, j)) 
                 # this command creates the combinations for "sub_elem"
                 # this can also be explained by the line shown here:
-                # print('Choosing '+ str(j)+ ' out of '+str(sub_nb_elem))
+                # #print('Choosing '+ str(j)+ ' out of '+str(sub_nb_elem))
                 # so, sub_nb_elem is the length of sub_elem. 
                 # e.g. if sub_nb_elem=6 and j =3, in this iteration it will be:
                 # "choosing 3 out of 6"
@@ -354,7 +354,7 @@ def create_action_space(env,substation_ids=list(range(14)), disable_line = -1, r
             for j in range(r,sub_nb_elem+1): 
                 # choosing (0,sub_nb_elem+1) will result 
                 # in alpha term but choosing (r,sub_nb_elem+1) results in alpha/2
-                print('Choosing '+ str(j)+ ' out of '+str(sub_nb_elem))
+                #print('Choosing '+ str(j)+ ' out of '+str(sub_nb_elem))
                 if(j==sub_nb_elem-1): # removing beta/2 term
                     continue
                 combs=list(it.combinations(sub_elem, j))
@@ -418,11 +418,11 @@ def create_action_space(env,substation_ids=list(range(14)), disable_line = -1, r
                         all_actions.append(single_action)
                         all_actions_dict.append(single_action_dict)
         
-        #print("len of dict all_actions_dict: ", len(all_actions_dict.keys()))    
+        ##print("len of dict all_actions_dict: ", len(all_actions_dict.keys()))    
         temp_index = return_DN_actions_indices(all_actions);
         DN_actions_indices.append(temp_index)
-    # print("all_actions dict: ",all_actions_dict[-1])
-    # print("len all actions", len(all_actions))
+    # #print("all_actions dict: ",all_actions_dict[-1])
+    # #print("len all actions", len(all_actions))
     if return_actions_dict:
         return all_actions, DN_actions_indices, all_actions_dict
     else:
