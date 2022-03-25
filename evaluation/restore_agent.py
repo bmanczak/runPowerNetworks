@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 def restore_agent(trainer_type:str, path:str, checkpoint_num:Optional[int] = None,
-                 modify_keys: Optional[bool] = None, ) \
+                 modify_keys: Optional[dict] = None, ) \
                         -> Tuple[Union[ppo.PPOTrainer, sac.SACTrainer], dict]:
     """
     Function that restores the agent from tune checkpointwith 
@@ -53,19 +53,20 @@ def restore_agent(trainer_type:str, path:str, checkpoint_num:Optional[int] = Non
 
     config_params = json.load(open(os.path.join(path, "params.json")))
     config_params.pop("callbacks", None)
-    env_config = config_params["env_config"]
-
+    
     # Optionally modify the keys 
     if modify_keys is not None:
         for key, val in modify_keys.items():
             if type(val) == dict:
                 for key2, val2 in val.items():
+                    logging.warning(f"Changing config for key {key}[{key2}] from {config_params[key][key2]} to {val2}")
                     config_params[key][key2] = val2
-                    logging.info(f"Setting config {key}[{key2}] to {val2}")
-                    print(f"Setting config {key}[{key2}] to {val2}")
+                    print(f"Changing config {key}[{key2}] to {val2}")
             else:
+                logging.warning(f"Changing config for key {key} from {config_params[key]} to {val}")
                 config_params[key] = val
-                logging.info(f"Setting config {key} to {val}")
+                
+    env_config = config_params["env_config"]
 
     # Get the checkpoint path with the highest number
     checkpoint_paths= os.listdir(path)

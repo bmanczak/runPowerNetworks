@@ -3,13 +3,14 @@ import os
 import numpy as np
 from tqdm import tqdm
 import logging
+import time
 
 import models
 
 from ray.rllib.models import ModelCatalog
 from collections import defaultdict
 from tqdm import tqdm
-from typing import Tuple
+from typing import Tuple, Optional
 
 from grid2op_env.grid_to_gym import Grid_Gym, Grid_Gym_Greedy, create_gym_env
 from evaluation.restore_agent import restore_agent
@@ -29,7 +30,7 @@ class EvaluationRunner:
 
     def __init__(self, agent_type:str, checkpoint_path:str, checkpoint_num = None,
              nb_episode:int = 1000, save_path:str = None, random_sample:bool = False, 
-             pbar:bool = False, greedy_env_config_agent_type:str = None):
+             pbar:bool = False, greedy_env_config_agent_type:str = None, use_test_chron: Optional[bool] = False):
 
         """
 
@@ -55,6 +56,8 @@ class EvaluationRunner:
             If True a progress bar will be displayed. Not recommended with Lisa.
         greedy_env_config_agent_type: str
             The type of the agenet from which the environment is fetched.
+        use_test_chron: bool
+            If True the test chronics will be used. If True, nb_episdode and random_sample will be ignored.
         """
 
         self.agent_type = agent_type
@@ -64,17 +67,27 @@ class EvaluationRunner:
         self.save_path = save_path
         self.random_sample = random_sample
         self.pbar = pbar
+        self.use_test_chron = use_test_chron
+
+        self.modify_keys = None
 
         assert self.agent_type in ["ppo", "sac", "greedy"], "Agent type not supported"
         if agent_type =="greedy":
             assert greedy_env_config_agent_type in ["ppo", "sac"], "Specify type of agent for greedy environment"
             self.greedy_env_config_agent_type = greedy_env_config_agent_type
 
-        if self.random_sample and nb_episode < 1000:
-            self.chronics_to_study = np.random.randint(1, 1001, nb_episode)
+        if use_test_chron:
+            print("Using test chronics")
+            self.chronics_to_study = np.load("grid2op_env/train_val_test_split/test_chronics.npy") + 1 # +1 because chronics start at 1
+            logging.warning("Using test chronics! Arguments nb_episode and random_sample are ignored.")
+            self.modify_keys = {"env_config":{"env_name": "rte_case14_realistic"}} # to correectly fetch the test chronics
+            
         else:
-            self.chronics_to_study = range(1, nb_episode + 1)
-        
+            if self.random_sample and nb_episode < 1000:
+                self.chronics_to_study = np.random.randint(1, 1001, nb_episode)
+            else:
+                self.chronics_to_study = range(1, nb_episode + 1)
+            
         print(f"Evaluating the following chronics {list(self.chronics_to_study)}")
         
         self.chronics_to_study = tqdm(self.chronics_to_study) if self.pbar else self.chronics_to_study
@@ -89,7 +102,9 @@ class EvaluationRunner:
                 self.save_path = os.path.join("evaluation/eval_results", f'greedy_{checkpoint_path.split("/")[-1]}')
             else:
                 self.save_path = os.path.join("evaluation/eval_results", f'{checkpoint_path.split("/")[-1]}')
-            self.save_path = f"{self.save_path}_{self.checkpoint_num}_{self.nb_episode}_{self.random_sample}"
+            
+            append_to_path = "test_chronics" if self.use_test_chron else f"{self.nb_episode}_{self.random_sample}"
+            self.save_path = f"{self.save_path}_{self.checkpoint_num}_{append_to_path}"
         if not os.path.exists(self.save_path):
             os.makedirs(self.save_path)
     
@@ -100,8 +115,10 @@ class EvaluationRunner:
         agent_type = self.agent_type if self.agent_type != "greedy" else self.greedy_env_config_agent_type
         agent, env_config = restore_agent(path = self.checkpoint_path,
                    checkpoint_num = self.checkpoint_num,
-                   trainer_type= agent_type)  
-    
+                   trainer_type= agent_type,
+                   modify_keys = self.modify_keys)
+        # if self.use_test_chron:
+        #     self.env_config["env_name"] = "rte_case14_realistic_test"
         self.agent, self.env_config  = agent, env_config
 
     def load_env_wrapper(self):
@@ -140,11 +157,18 @@ class EvaluationRunner:
         actions = defaultdict(list)
         topo_vects = defaultdict(list) 
         chronic_to_num_steps = defaultdict(list) 
-        for chronic_id in self.chronics_to_study:
-            self.env.set_id(chronic_id)
+        rewards = defaultdict(int)
+        avg_time_per_step = defaultdict(int)
 
-            if int(self.env.chronics_handler.get_name()) > len(self.env.chronics_handler.subpaths): 
-                raise ValueError("Chronics id is too high")
+        #self.chronics_to_study = [830, 61, 4, 35, 429, 664, 18, 164, 2, 4]
+        for chronic_progress_count, chronic_id in enumerate(self.chronics_to_study):
+            self.env.set_id(chronic_id)
+            cum_reward_this_chronic = 0
+            start_time = time.time()
+
+            if not self.use_test_chron: 
+                if int(self.env.chronics_handler.get_name()) > len(self.env.chronics_handler.subpaths): 
+                    raise ValueError("Chronics id is too high")
             assert int(self.env.chronics_handler.get_name()) == chronic_id-1, "Chronics id is not the same as the one in the environment"
             
             done = False
@@ -160,24 +184,37 @@ class EvaluationRunner:
                     actions[chronic_id].append(act)
                     
                 obs, reward, done, info = self.env.step(act)
-
+                cum_reward_this_chronic += reward
                 if add_obs: # save topo vector resulting from action above the threshold
                     topo_vects[chronic_id].append(obs.topo_vect)
                     add_obs = False
                     chronic_to_num_steps[chronic_id].append(num_steps)
-
+            
+            # print(f"Chronic {chronic_id} done in {time.time() - start_time} seconds")
+            # print(f"Chronic {chronic_id} done in {num_steps} steps")
+            # print(f"Mean time per 1000 steps: {(time.time() - start_time) / num_steps * 1000}")
             chronic_to_num_steps[chronic_id].append(num_steps)
+            rewards[chronic_id] = cum_reward_this_chronic
+            avg_time_per_step[chronic_id] = (time.time() - start_time)/num_steps
+
+            if chronic_progress_count % 10 == 0:
+                 print(f"Mean number of steps completed after {chronic_progress_count/len(self.chronics_to_study)} chronics to evaluate: \n \
+                     {np.mean([steps[-1] for chronic,steps in chronic_to_num_steps.items()])}")  
         
         np.save(os.path.join(self.save_path, f"actions.npy"),
                 actions)
-        np.save(os.path.join(self.save_path, f"topo_vects{self.checkpoint_num}_{self.nb_episode}_{self.random_sample}.npy"),
+        np.save(os.path.join(self.save_path, f"topo_vects.npy"),
                 topo_vects)
-        np.save(os.path.join(self.save_path, f"chronic_to_num_steps{self.checkpoint_num}_{self.nb_episode}_{self.random_sample}.npy"),
+        np.save(os.path.join(self.save_path, f"chronic_to_num_steps.npy"),
                 chronic_to_num_steps)
+        np.save(os.path.join(self.save_path, f"rewards.npy"),
+                rewards)
+        np.save(os.path.join(self.save_path, f"avg_time_per_step.npy"),
+                avg_time_per_step)
         
         print("Mean number of steps completed over the tested chronis", np.mean([steps[-1] for chronic,steps in chronic_to_num_steps.items()]))  
         
-        return actions, topo_vects, chronic_to_num_steps    
+        return actions, topo_vects, chronic_to_num_steps, rewards, avg_time_per_step   
 
     @staticmethod
     def instanciate_greedy(env_config: dict) -> models.greedy_agent.ClassicGreedyAgent :
@@ -216,6 +253,7 @@ if "__main__" == __name__:
     parser.add_argument("--random_sample", type=bool, default=False, help="Random sample episode id")
     parser.add_argument("--pbar", type=bool, default=True, help="Use a progress bar")
     parser.add_argument("--greedy_env_config_agent_type", type=str, default="ppo", help="The type of the agenet from which the environment is fetched.")
+    parser.add_argument("--use_test_chron", type=bool, default=False, help="Use the test chronics")
     
     args = parser.parse_args()
 
