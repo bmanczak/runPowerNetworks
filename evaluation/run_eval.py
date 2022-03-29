@@ -30,7 +30,7 @@ class EvaluationRunner:
 
     def __init__(self, agent_type:str, checkpoint_path:str, checkpoint_num = None,
              nb_episode:int = 1000, save_path:str = None, random_sample:bool = False, 
-             pbar:bool = False, greedy_env_config_agent_type:str = None, use_test_chron: Optional[bool] = False):
+             pbar:bool = False, greedy_env_config_agent_type:str = None, use_split: Optional[str] = "test"):
 
         """
 
@@ -56,8 +56,8 @@ class EvaluationRunner:
             If True a progress bar will be displayed. Not recommended with Lisa.
         greedy_env_config_agent_type: str
             The type of the agenet from which the environment is fetched.
-        use_test_chron: bool
-            If True the test chronics will be used. If True, nb_episdode and random_sample will be ignored.
+        use_test_chron: str
+           Specifies if and what data split should be used.
         """
 
         self.agent_type = agent_type
@@ -67,28 +67,31 @@ class EvaluationRunner:
         self.save_path = save_path
         self.random_sample = random_sample
         self.pbar = pbar
-        self.use_test_chron = use_test_chron
+        self.use_split = use_split
 
         self.modify_keys = None
 
         assert self.agent_type in ["ppo", "sac", "greedy"], "Agent type not supported"
+        assert self.use_split in ["train", "val", "test", None], "Incompatible split. Please use one of the following: \
+                                 train, val, test or None for random sample of all chronics"
         if agent_type =="greedy":
             assert greedy_env_config_agent_type in ["ppo", "sac"], "Specify type of agent for greedy environment"
             self.greedy_env_config_agent_type = greedy_env_config_agent_type
 
-        if use_test_chron:
-            print("Using test chronics")
-            self.chronics_to_study = np.load("grid2op_env/train_val_test_split/test_chronics.npy") + 1 # +1 because chronics start at 1
+        if use_split is not None:
+            print(f"Using split {use_split}")
+            self.chronics_to_study = np.load(f"grid2op_env/train_val_test_split/{use_split}_chronics.npy") + 1 # +1 because chronics start at 1
             logging.warning("Using test chronics! Arguments nb_episode and random_sample are ignored.")
-            self.modify_keys = {"env_config":{"env_name": "rte_case14_realistic"}} # to correectly fetch the test chronics
+            self.modify_keys = {"env_config":{"env_name": f"rte_case14_realistic_{use_split}"}} # to correectly fetch the test chronics
             
         else:
+            print("Not using data split, sampling chronics from all episodes...")
             if self.random_sample and nb_episode < 1000:
                 self.chronics_to_study = np.random.randint(1, 1001, nb_episode)
             else:
                 self.chronics_to_study = range(1, nb_episode + 1)
             
-        print(f"Evaluating the following chronics {list(self.chronics_to_study)}")
+        #print(f"Evaluating the following chronics {list(self.chronics_to_study)}")
         
         self.chronics_to_study = tqdm(self.chronics_to_study) if self.pbar else self.chronics_to_study
 
@@ -103,8 +106,8 @@ class EvaluationRunner:
             else:
                 self.save_path = os.path.join("evaluation/eval_results", f'{checkpoint_path.split("/")[-1]}')
             
-            append_to_path = "test_chronics" if self.use_test_chron else f"{self.nb_episode}_{self.random_sample}"
-            self.save_path = f"{self.save_path}_{self.checkpoint_num}_{append_to_path}"
+            append_to_path = f"{use_split}_chronics" if use_split is not None else f"{self.nb_episode}_{self.random_sample}"
+            self.save_path = f"{self.save_path}/{self.checkpoint_num}_{append_to_path}"
         if not os.path.exists(self.save_path):
             os.makedirs(self.save_path)
     
@@ -161,16 +164,18 @@ class EvaluationRunner:
         avg_time_per_step = defaultdict(int)
 
         #self.chronics_to_study = [830, 61, 4, 35, 429, 664, 18, 164, 2, 4]
+        if self.use_split is not None: 
+            self.chronics_to_study = [elem+ 1 for elem in range(0, len(self.env.chronics_handler.subpaths)) ]
         for chronic_progress_count, chronic_id in enumerate(self.chronics_to_study):
             self.env.set_id(chronic_id)
             cum_reward_this_chronic = 0
             start_time = time.time()
 
-            if not self.use_test_chron: 
+            if self.use_split is None:  # only works for the entire chronic set
                 if int(self.env.chronics_handler.get_name()) > len(self.env.chronics_handler.subpaths): 
                     raise ValueError("Chronics id is too high")
-            assert int(self.env.chronics_handler.get_name()) == chronic_id-1, "Chronics id is not the same as the one in the environment"
-            
+                assert int(self.env.chronics_handler.get_name()) == chronic_id-1, "Chronics id is not the same as the one in the environment"
+            print("CHRONIC", self.env.chronics_handler.get_id(), chronic_id)
             done = False
             num_steps = 0
             obs = self.env.reset()
@@ -181,21 +186,21 @@ class EvaluationRunner:
                 act = self.wrapped_agent.act(obs)
                 if obs.rho.max() > self.env_config["rho_threshold"]: # save action taken above the threshold
                     add_obs = True
-                    actions[chronic_id].append(act)
+                    actions[int(self.env.chronics_handler.get_name())].append(act)
                     
                 obs, reward, done, info = self.env.step(act)
                 cum_reward_this_chronic += reward
                 if add_obs: # save topo vector resulting from action above the threshold
-                    topo_vects[chronic_id].append(obs.topo_vect)
+                    topo_vects[int(self.env.chronics_handler.get_name())].append(obs.topo_vect)
                     add_obs = False
-                    chronic_to_num_steps[chronic_id].append(num_steps)
+                    chronic_to_num_steps[int(self.env.chronics_handler.get_name())].append(num_steps)
             
-            # print(f"Chronic {chronic_id} done in {time.time() - start_time} seconds")
-            # print(f"Chronic {chronic_id} done in {num_steps} steps")
+            # print(f"Chronic {int(self.env.chronics_handler.get_name())} done in {time.time() - start_time} seconds")
+            # print(f"Chronic {int(self.env.chronics_handler.get_name())} done in {num_steps} steps")
             # print(f"Mean time per 1000 steps: {(time.time() - start_time) / num_steps * 1000}")
-            chronic_to_num_steps[chronic_id].append(num_steps)
-            rewards[chronic_id] = cum_reward_this_chronic
-            avg_time_per_step[chronic_id] = (time.time() - start_time)/num_steps
+            chronic_to_num_steps[int(self.env.chronics_handler.get_name())].append(num_steps)
+            rewards[int(self.env.chronics_handler.get_name())] = cum_reward_this_chronic
+            avg_time_per_step[int(self.env.chronics_handler.get_name())] = (time.time() - start_time)/num_steps
 
             if chronic_progress_count % 10 == 0:
                  print(f"Mean number of steps completed after {chronic_progress_count/len(self.chronics_to_study)} chronics to evaluate: \n \
@@ -253,10 +258,11 @@ if "__main__" == __name__:
     parser.add_argument("--random_sample", type=bool, default=False, help="Random sample episode id")
     parser.add_argument("--pbar", type=bool, default=True, help="Use a progress bar")
     parser.add_argument("--greedy_env_config_agent_type", type=str, default="ppo", help="The type of the agenet from which the environment is fetched.")
-    parser.add_argument("--use_test_chron", type=bool, default=False, help="Use the test chronics")
+    parser.add_argument("--use_split", type=str, default=True, choices = ["train", "val", "test", None] ,help="Whether a split of the data should be used")
     
     args = parser.parse_args()
 
     eval_runner = EvaluationRunner(**vars(args))
     eval_runner.eval_loop()
     
+
