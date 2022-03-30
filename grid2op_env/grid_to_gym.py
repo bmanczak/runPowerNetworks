@@ -24,7 +24,7 @@ from gym.spaces import Box, Discrete # needed for adding connectivity matrix
 from grid2op_env.medha_action_space import create_action_space, remove_redundant_actions
 from grid2op_env.utils import CustomDiscreteActions, get_sub_id_to_action
 from grid2op_env.rewards import ScaledL2RPNReward, CloseToOverflowReward, LinesReconnectedReward, DistanceReward
-from grid2op_env.utils import get_sub_id_to_elem_id, reverse_dict, get_sub_id_to_action
+from grid2op_env.utils import get_sub_id_to_elem_id, reverse_dict, get_sub_id_to_action, opponent_kwargs
 from models.utils import vectorize_obs
 from models.greedy_agent import RoutingTopologyGreedy
 from definitions import ROOT_DIR
@@ -57,6 +57,7 @@ class CustomGymEnv(GymEnv):
     def __init__(self, env_init, disable_line = -1):
         super().__init__(env_init)
         self.disable_line = disable_line 
+        self.reconnect_line = None
      
     def reset(self):
         if self.disable_line == -1:
@@ -76,12 +77,38 @@ class CustomGymEnv(GymEnv):
         gym_obs = self.observation_space.to_gym(g2op_obs)
         return gym_obs
 
+    def step(self, gym_action):
+        g2op_act = self.action_space.from_gym(gym_action)
+        # print_next_obs = False
+        if self.reconnect_line is not None:
+                # print("reconnecting!!!")
+                reconnect_act = self.init_env.action_space(
+                            {"set_line_status":(self.reconnect_line,1) })
+                g2op_act = g2op_act + reconnect_act
+                print_next_obs = True
+                self.reconnect_line = None
+                
+        g2op_obs, reward, done, info = self.init_env.step(g2op_act)
+        # if (g2op_obs.topo_vect == -1).any():
+        #     print("g2op_obs rho: ", g2op_obs.rho)
+        # if print_next_obs:
+        #     print("next obs: ", g2op_obs.rho)
+
+        if isinstance(info["opponent_attack_line"], np.ndarray):
+                if info["opponent_attack_duration"] == 1:
+                    line_id_attacked = np.argwhere(info["opponent_attack_line"]).flatten()[0]   
+                    self.reconnect_line = line_id_attacked  
+
+        gym_obs = self.observation_space.to_gym(g2op_obs)
+        return gym_obs, float(reward), done, info
+
 class SubstationGreedyEnv(CustomGymEnv):
 
     def __init__(self,env_init, greedy_agent, disable_line = -1, graph_obs = False):
         super().__init__(env_init, disable_line)
         self.graph_obs = graph_obs
         self.agent = greedy_agent
+        self.reconnect_line = None
     
     def action_mapper(self, sub_id, obs = None):
         """
@@ -116,10 +143,28 @@ class SubstationGreedyEnv(CustomGymEnv):
 
     def step(self, gym_action):
         g2op_act = self.action_mapper(sub_id = gym_action)
+        # print_next_obs = False
+        if self.reconnect_line is not None:
+                # print("reconnecting!!!")
+                reconnect_act = self.init_env.action_space(
+                            {"set_line_status":(self.reconnect_line,1) })
+                g2op_act = g2op_act + reconnect_act
+                print_next_obs = True
+                self.reconnect_line = None
+
         # print("gym action", gym_action)
         self.g2op_act = g2op_act
         g2op_obs, reward, done, info = self.init_env.step(g2op_act)
         self.last_obs = g2op_obs # needed for the greedy agent
+        # if (g2op_obs.topo_vect == -1).any():
+        #     print("g2op_obs rho: ", g2op_obs.rho)
+        # if print_next_obs:
+        #     print("next obs: ", g2op_obs.rho)
+
+        if isinstance(info["opponent_attack_line"], np.ndarray):
+                if info["opponent_attack_duration"] == 1:
+                    line_id_attacked = np.argwhere(info["opponent_attack_line"]).flatten()[0]   
+                    self.reconnect_line = line_id_attacked  
         # if self.graph_obs:
         #     print("Vectorizing the observation!!")
         #     gym_obs = self.observation_space.to_gym(g2op_obs)
@@ -159,7 +204,8 @@ class Grid_Gym(gym.Env):
                                         substation_actions = env_config.get("substation_actions", False),
                                         greedy_agent = env_config.get("greedy_agent", False),
                                         graph_obs = env_config.get("graph_obs", False),
-                                        combine_rewards= env_config.get("combine_rewards", False))
+                                        combine_rewards= env_config.get("combine_rewards", False),
+                                        with_opponent= env_config.get("with_opponent", False))
         
         # Define parameters needed for parametric action space
         self.rho_threshold = env_config.get("rho_threshold", 0.95) - 1e-5 # used for stability in edge cases
@@ -342,6 +388,7 @@ def create_gym_env(env_name = "rte_case14_realistic" , keep_obseravations = None
                     scale = True, convert_to_tuple = True, act_on_single_substation  = True,
                     medha_actions = True, seed=2137, disable_line = -1, conn_matrix = False,
                     substation_actions = False, greedy_agent = False, graph_obs = False, combine_rewards =False,
+                    with_opponent = False,
                     **kwargs):
     """
     Create a gym environment from a grid2op environment.
@@ -390,7 +437,10 @@ def create_gym_env(env_name = "rte_case14_realistic" , keep_obseravations = None
     """
     
     if combine_rewards:
-        env = grid2op.make(env_name, reward_class = CombinedReward, test = False, backend = LightSimBackend(), **kwargs)
+        if with_opponent:
+            env = grid2op.make(env_name, reward_class = CombinedReward, test = False, backend = LightSimBackend(), **opponent_kwargs)
+        else: 
+            env = grid2op.make(env_name, reward_class = CombinedReward, test = False, backend = LightSimBackend(), **kwargs)
         cr = env.get_reward_instance()
         cr.addReward("LinesReconnectedReward", LinesReconnectedReward(), 0.333)
         cr.addReward("CloseToOverflowReward", CloseToOverflowReward(), 0.333)
@@ -398,7 +448,11 @@ def create_gym_env(env_name = "rte_case14_realistic" , keep_obseravations = None
         #cr.addReward("DistanceReward", DistanceReward(), 1.0)
         cr.initialize(env)
     else:
-        env = grid2op.make(env_name, reward_class = ScaledL2RPNReward, test = False, backend = LightSimBackend(), **kwargs)
+        print("ENV NAME", env_name)
+        if with_opponent:
+            env = grid2op.make(env_name, reward_class = ScaledL2RPNReward, test = False, backend = LightSimBackend(), **opponent_kwargs)
+        else:
+            env = grid2op.make(env_name, reward_class = ScaledL2RPNReward, test = False, backend = LightSimBackend(), **kwargs)
     
     print(f"The environment has {len(env.chronics_handler.subpaths)} chronics.")
     logging.info(f"The reward range is {env.reward_range}")

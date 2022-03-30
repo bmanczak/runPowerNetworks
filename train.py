@@ -66,12 +66,13 @@ if __name__ == "__main__":
     parser.add_argument("--num_iters", type=int, default=1000, help="Number of iterations to train the agent for.")
     parser.add_argument("--num_workers", type=int, default=-1, help="Number of workers to use for training.")
     parser.add_argument("--num_samples", type=int, default=1, help="Number of samples to use for training.")
-    parser.add_argument("--checkpoint_freq", type=int, default=25, help="Number of iterations between checkpoints.")
+    parser.add_argument("--checkpoint_freq", type=int, default=10, help="Number of iterations between checkpoints.")
     parser.add_argument("--group" , type=str, default=None, help="Group to use for training.")
     parser.add_argument("--resume", type=bool, default=False, help="Resume training from a checkpoint. If yes, group must be specified.")
     parser.add_argument("--grace_period", type = int, default = 400, help = "Minimum number of timesteps before a trial can be early stopped.")
     parser.add_argument("--num_iters_no_improvement", type = int, default = 200, help = "Minimum number of timesteps before a trial can be early stopped.")
     parser.add_argument("--seed", type = int, default = -1, help = "Seed to use for training.")
+    parser.add_argument("--with_opponent", type = bool, default= -1, help = "Whether to use an opponent or not.")
 
     args = parser.parse_args()
 
@@ -85,6 +86,9 @@ if __name__ == "__main__":
         config["num_workers"] = args.num_workers
     if args.seed != -1:
         config["seed"] = args.seed
+    if args.with_opponent != -1:
+        config["env_config"]["with_opponent"] = True
+        config["evaluation_config"]["env_config"]["with_opponent"] = True
 
     if args.algorithm == "ppo":
         trainer = ppo.PPOTrainer
