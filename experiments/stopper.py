@@ -56,16 +56,20 @@ class MaxNotImprovedStopper(Stopper):
                     f"Got: {mode}")
 
         self._iter = defaultdict(lambda: 0)
+        self._iter_no_improv = defaultdict(lambda: 0)
 
     def __call__(self, trial_id: str, result: Dict):
         metric_result = result.get(self._metric)
-        # self._trial_results[trial_id].append(metric_result)
         self._iter[trial_id] += 1
+
+        logging.info(f"Trial {trial_id} iteration {self._iter[trial_id]}")
+        logging.info("Metric result:", metric_result)
+        logging.info("Trials without improvement:", self._iter_no_improv[trial_id])
         if metric_result > self._current_max_trial[trial_id] * (1 + self._percent_improve):
             self._current_max_trial[trial_id] = metric_result
-            self._iters_no_improvement = 0
+            self._iter_no_improv[trial_id] = 0
         else:
-            self._iters_no_improvement += 1
+            self._iter_no_improv[trial_id] += 1
 
         # If still in grace period, do not stop yet
         if self._iter[trial_id] < self._grace_period:
@@ -79,8 +83,9 @@ class MaxNotImprovedStopper(Stopper):
                     metric_result < self._metric_threshold:
                 return False
         # If max has no been surpased in num_iters_no_improvement, early stop.
-        if self._num_iters_no_improvement < self._iters_no_improvement:
-            logger.info(f"Terminating the trial early with max value of {self._metric}: {self._current_max_trial[trial_id]}")
+        if self._num_iters_no_improvement < self._iter_no_improv[trial_id]:
+            logger.info(f"Terminating the trial early with max value of {self._metric}: {self._current_max_trial[trial_id]} \
+                after {self._iter[trial_id]} iterations without improvement.") 
             return True 
         return False # if else, return false 
 
