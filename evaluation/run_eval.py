@@ -101,10 +101,15 @@ class EvaluationRunner:
         self.wrap_agent()
 
         if save_path is None:
-            if self.agent_type == "greedy":
-                self.save_path = os.path.join("evaluation/eval_results", f'greedy_{checkpoint_path.split("/")[-1]}')
+            if self.env_config.get("with_opponent", False):
+                opponent_suffix = "with_opponent_"
             else:
-                self.save_path = os.path.join("evaluation/eval_results", f'{checkpoint_path.split("/")[-1]}')
+                opponent_suffix = ""
+
+            if self.agent_type == "greedy":
+                self.save_path = os.path.join("evaluation/eval_results", f'greedy_{opponent_suffix}{checkpoint_path.split("/")[-1]}')
+            else:
+                self.save_path = os.path.join("evaluation/eval_results", f'{opponent_suffix}{checkpoint_path.split("/")[-1]}')
             
             append_to_path = f"{use_split}_chronics" if use_split is not None else f"{self.nb_episode}_{self.random_sample}"
             self.save_path = f"{self.save_path}/{self.checkpoint_num}_{append_to_path}"
@@ -180,6 +185,7 @@ class EvaluationRunner:
             num_steps = 0
             obs = self.env.reset()
             add_obs = False
+            reconnect_line = None
             
             while not done:
                 num_steps += 1
@@ -187,8 +193,20 @@ class EvaluationRunner:
                 if obs.rho.max() > self.env_config["rho_threshold"]: # save action taken above the threshold
                     add_obs = True
                     actions[int(self.env.chronics_handler.get_name())].append(act)
-                    
+                
+                if reconnect_line is not None:
+                    reconnect_act = self.env.action_space(
+                                {"set_line_status":(reconnect_line,1) })
+                    act = act + reconnect_act
+                    reconnect_line = None
+
                 obs, reward, done, info = self.env.step(act)
+
+                if isinstance(info["opponent_attack_line"], np.ndarray):
+                    if info["opponent_attack_duration"] == 1:
+                        line_id_attacked = np.argwhere(info["opponent_attack_line"]).flatten()[0]   
+                        reconnect_line = line_id_attacked  
+
                 cum_reward_this_chronic += reward
                 if add_obs: # save topo vector resulting from action above the threshold
                     topo_vects[int(self.env.chronics_handler.get_name())].append(obs.topo_vect)
