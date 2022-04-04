@@ -62,9 +62,9 @@ class MaxNotImprovedStopper(Stopper):
         metric_result = result.get(self._metric)
         self._iter[trial_id] += 1
 
-        logging.info(f"Trial {trial_id} iteration {self._iter[trial_id]}")
-        logging.info("Metric result:", metric_result)
-        logging.info("Trials without improvement:", self._iter_no_improv[trial_id])
+        logging.info(f"Metric result: {metric_result}")
+        logging.info(f"Trials without improvement: {self._iter_no_improv[trial_id]}")
+        logging.info(f"Trials without improvement: {self._iter_no_improv[trial_id]}")
         if metric_result > self._current_max_trial[trial_id] * (1 + self._percent_improve):
             self._current_max_trial[trial_id] = metric_result
             self._iter_no_improv[trial_id] = 0
@@ -84,8 +84,8 @@ class MaxNotImprovedStopper(Stopper):
                 return False
         # If max has no been surpased in num_iters_no_improvement, early stop.
         if self._num_iters_no_improvement < self._iter_no_improv[trial_id]:
-            logger.info(f"Terminating the trial early with max value of {self._metric}: {self._current_max_trial[trial_id]} \
-                after {self._iter[trial_id]} iterations without improvement.") 
+            logger.info(f"Terminating the trial {trial_id} early with max value of {self._metric}: {self._current_max_trial[trial_id]} \
+                after {self._iter_no_improv[trial_id]} iterations without improvement.") 
             return True 
         return False # if else, return false 
 

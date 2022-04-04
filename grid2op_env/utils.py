@@ -5,10 +5,13 @@ from grid2op.Action import PowerlineSetAction
 from grid2op.Opponent import RandomLineOpponent, BaseActionBudget
 
 lines_attacked = ['3_4_6','11_12_13', '3_6_15','3_8_16', '6_8_19'] # '5_11_8', '4_5_17'
-opponent_kwargs = {"opponent_attack_cooldown":12*12, # max 2 attacks per day
-        "opponent_attack_duration":12*4, # 12*4
-        "opponent_budget_per_ts":1, # 0.5 how much budget per time step
-        "opponent_init_budget":10,
+opponent_attack_cooldown = 12*12 # max 2 attacks per day
+opponent_attack_duration = 12*4 # 4 hours in a day
+
+opponent_kwargs = {"opponent_attack_cooldown":opponent_attack_cooldown, 
+        "opponent_attack_duration":opponent_attack_duration, #  # 12*4
+        "opponent_budget_per_ts":(opponent_attack_duration / opponent_attack_cooldown) + 1e-5, # 0.5 how much budget per time step
+        "opponent_init_budget":144,
         "opponent_action_class":PowerlineSetAction,
         "opponent_class":RandomLineOpponent,
         "opponent_budget_class":BaseActionBudget,
