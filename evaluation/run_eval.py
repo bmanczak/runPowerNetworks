@@ -107,9 +107,9 @@ class EvaluationRunner:
                 opponent_suffix = ""
 
             if self.agent_type == "greedy":
-                self.save_path = os.path.join("evaluation/eval_results", f'greedy_{opponent_suffix}{checkpoint_path.split("/")[-1]}')
+                self.save_path = os.path.join("evaluation/eval_results", f'greedy_{opponent_suffix}{checkpoint_path.strip("/").split("/")[-1]}')
             else:
-                self.save_path = os.path.join("evaluation/eval_results", f'{opponent_suffix}{checkpoint_path.split("/")[-1]}')
+                self.save_path = os.path.join("evaluation/eval_results", f'{opponent_suffix}{checkpoint_path.strip("/").split("/")[-1]}')
             
             append_to_path = f"{use_split}_chronics" if use_split is not None else f"{self.nb_episode}_{self.random_sample}"
             self.save_path = f"{self.save_path}/{self.checkpoint_num}_{append_to_path}"
@@ -205,7 +205,7 @@ class EvaluationRunner:
                 if isinstance(info["opponent_attack_line"], np.ndarray):
                     if info["opponent_attack_duration"] == 1:
                         line_id_attacked = np.argwhere(info["opponent_attack_line"]).flatten()[0]   
-                        reconnect_line = line_id_attacked  
+                        reconnect_line = line_id_attacked 
 
                 cum_reward_this_chronic += reward
                 if add_obs: # save topo vector resulting from action above the threshold

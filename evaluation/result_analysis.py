@@ -399,9 +399,12 @@ def compile_table_df(data_per_algorithm:Dict) -> pd.DataFrame:
         mean_topo_depth = defaultdict(list)
         topo_vects = data_per_algorithm[name]["agent_info"].topo_vects
         for _, topo_vects_chronic in topo_vects.items():
+            # Do not take disconnected lines into the depth calculation
+            diff_from_default = np.array(topo_vects_chronic) - 1
+            diff_from_default_ignore_disconnected = np.where(diff_from_default > 0, diff_from_default, 0)       
             mean_topo_depth[name].append(np.mean
                                         (np.sum(
-                                                np.array(topo_vects_chronic) - 1, axis = 1)
+                                                diff_from_default_ignore_disconnected, axis = 1)
                                                 )
                 )
         df.loc[name, "mean_topo_depth"] = np.mean(mean_topo_depth[name])
