@@ -75,6 +75,8 @@ model_config: &model_config
     decoder_model_config: *decoder_model_config
     env_config: *env_config_train
     pretrained_model_config: *pretrained_model_config
+    node_adj_mat_path: "/Users/blazejmanczak/Desktop/School/Year2/Thesis/runPowerNetworks/grid2op_env/adj_matrices/node_adj_matrix.pkl"
+    sub_adj_mat_path: "/Users/blazejmanczak/Desktop/School/Year2/Thesis/runPowerNetworks/grid2op_env/adj_matrices/sub_adj_matrix.pkl"
    
 
 tune_config:

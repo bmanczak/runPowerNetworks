@@ -4,6 +4,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
+import pickle
 
 from torch_geometric.data import Data, Batch
 from torch.nn.utils.rnn import pad_sequence
@@ -397,10 +398,17 @@ class HierarchicalAgent(TorchModelV2, nn.Module):
         self.rllib_env =  Grid_Gym(model_config["custom_model_config"]["env_config"]); # copy of the training env to get the elem_topo_action_mappings
         self.element_to_action_num, self.action_to_topology = get_elem_action_topo_map(self.rllib_env)
         # Get the adjacency matrices and keep them fixed during training
-        self.cached_sub_adj = torch.from_numpy(get_sub_adjacency_matrix(self.line_to_sub_id))
-        self.cached_adj_node = torch.from_numpy(self.rllib_env.reset()["connectivity_matrix"])
-        assert self.cached_adj_node.sum().item() > 0, "Node adjacency matrix is empty"
+        import os
+        print("Current directory", os.getcwd())
+        self.cached_sub_adj = torch.from_numpy(pickle.load(open(\
+           model_config["custom_model_config"]["sub_adj_mat_path"]
+            , "rb"))).unsqueeze(0)
+        self.cached_node_adj = torch.from_numpy(pickle.load(open(\
+           model_config["custom_model_config"]["node_adj_mat_path"]
+            , "rb"))).unsqueeze(0)
         assert self.cached_sub_adj.sum().item() > 0, "Substation adjacency matrix is empty"
+        assert self.cached_node_adj.sum().item() > 0, "Node adjacency matrix is empty"
+        
 
         # Build the models
         self.node_sub_actor = HierarchicalGraphModel(self.node_model_config, self.sub_model_config,
@@ -440,7 +448,7 @@ class HierarchicalAgent(TorchModelV2, nn.Module):
         self.obs_non_vectorized = input_dict["obs"]
         
         self.batch_size = input_dict["obs_flat"].shape[0]
-        self.adj_node = self.cached_adj_node.repeat(self.batch_size, 1, 1).to(self.obs.device)
+        self.adj_node = self.cached_node_adj.repeat(self.batch_size, 1, 1).to(self.obs.device)
         self.adj_substation = self.cached_sub_adj.repeat(self.batch_size, 1, 1).to(self.obs.device)
         
         # Actor  
