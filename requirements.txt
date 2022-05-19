@@ -1,5 +1,0 @@
-ray==1.8.0
-Grid2Op==1.6.4
-tabulate==0.8.9
-tqdm==4.62.3
-pillow==8.0.1

@@ -1,3 +1,4 @@
+from typing import OrderedDict
 import gym
 import numpy as np
 
@@ -107,7 +108,15 @@ class SimpleMlp(TorchModelV2, nn.Module):
             #print("obs", obs.shape, obs)
             inf_mask = torch.clamp(torch.log(input_dict["obs"]["action_mask"]), FLOAT_MIN, FLOAT_MAX)
         else:
-            obs = input_dict["obs_flat"].float()
+            if isinstance(input_dict["obs_flat"], OrderedDict):
+                # logging.warning("applying custom flattening")
+                # Flatten the dictionary and convert to a tensor
+                obs = torch.cat(
+                    [val for val in input_dict["obs_flat"].values()], dim = -1).float()
+                if obs.ndim == 1: # edge case of batch size 1
+                    obs = obs.unsqueeze(0)
+            else:
+                obs = input_dict["obs_flat"].float()
 
         self._last_flat_in = obs.reshape(obs.shape[0], -1)
         self._features = self._hidden_layers(self._last_flat_in)

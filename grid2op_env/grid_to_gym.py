@@ -582,7 +582,7 @@ def get_env_spec(env_config:dict):
     env_config: dict
         The dictionary with the environment configuration.
     """
-    env_gym, _, env, _ = create_gym_env(env_name = env_config["env_name"],
+    env_gym, _, env, all_actions = create_gym_env(env_name = env_config["env_name"],
                                         keep_obseravations= env_config["keep_observations"],
                                         keep_actions= env_config["keep_actions"],
                                         convert_to_tuple=env_config["convert_to_tuple"],
@@ -594,9 +594,10 @@ def get_env_spec(env_config:dict):
                                         substation_actions = env_config.get("substation_actions", False),
                                         greedy_agent = env_config.get("greedy_agent", False),
                                         graph_obs = env_config.get("graph_obs", False))
-    sub_id_to_elem_id = get_sub_id_to_elem_id(env)
+    sub_id_to_elem_id = {k:sorted(v) for k,v in get_sub_id_to_elem_id(env).items()}
     topo_spec = env.action_space # holds the topology of the elements
-    sub_id_to_action = env_gym.agent.sub_id_to_action 
+    
+    sub_id_to_action = get_sub_id_to_action(all_actions)
 
     line_to_sub_id = (env.reset().line_or_to_subid, env.reset().line_ex_to_subid)
 

@@ -63,7 +63,7 @@ def restore_agent(trainer_type:str, path:str, checkpoint_num:Optional[int] = Non
                     config_params[key][key2] = val2
                     print(f"Changing config {key}[{key2}] to {val2}")
             else:
-                logging.warning(f"Changing config for key {key} from {config_params[key]} to {val}")
+                logging.warning(f"Changing config for key {key} from {config_params.get(key, None)} to {val}")
                 config_params[key] = val
                 
     env_config = config_params["env_config"]
@@ -85,7 +85,7 @@ def restore_agent(trainer_type:str, path:str, checkpoint_num:Optional[int] = Non
     elif trainer_type == "sac":
         agent = sac.SACTrainer(env=Grid_Gym,
             config = config_params)
-
+            
     agent.restore(checkpoint_path);
 
     return agent, env_config

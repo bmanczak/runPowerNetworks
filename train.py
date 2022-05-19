@@ -9,6 +9,7 @@ import yaml
 import random
 import numpy as np
 import torch 
+import pickle
 
 
 from ray.rllib.models import ModelCatalog
@@ -28,6 +29,7 @@ from dotenv import load_dotenv # security keys
 
 from models.mlp import SimpleMlp
 from models.substation_module import RllibSubsationModule
+from models.hierarchical_agent import HierarchicalAgent, GreedySubModelNoWorker
 from grid2op_env.grid_to_gym import Grid_Gym, Grid_Gym_Greedy
 from experiments.callback import CustomTBXLogger, LogDistributionsCallback
 from experiments.preprocess_config import preprocess_config, get_loader
@@ -52,6 +54,8 @@ if __name__ == "__main__":
     torch.manual_seed(2137)
     ModelCatalog.register_custom_model("fcn", SimpleMlp)
     ModelCatalog.register_custom_model("substation_module", RllibSubsationModule)
+    ModelCatalog.register_custom_model("hierarchical_agent", HierarchicalAgent)
+
     register_env("Grid_Gym", Grid_Gym)
     register_env("Grid_Gym_Greedy", Grid_Gym_Greedy)
     ray.shutdown()
@@ -89,14 +93,28 @@ if __name__ == "__main__":
     if args.with_opponent != -1:
         config["env_config"]["with_opponent"] = True
         config["evaluation_config"]["env_config"]["with_opponent"] = True
+    
+    pretrained_model_config = config["model"]["custom_model_config"]\
+                    .get("pretrained_model_config", None)
+    print(pretrained_model_config)
+    if pretrained_model_config is not None:
+        # pretrained_substation_model = GreedySubModel(**pretrained_model_config)
+        pretrained_substation_model = GreedySubModelNoWorker(model= pickle.load(open(pretrained_model_config["model_path"], "rb")),
+                                                            dist_class=pickle.load(open(pretrained_model_config["dist_class_path"], "rb")),
+                                                            env_config= pickle.load(open(pretrained_model_config["env_config_path"], "rb")),
+                                                            num_to_sub=pickle.load(open(pretrained_model_config["num_to_sub_path"], "rb")))
 
+        config["model"]["custom_model_config"]["pretrained_substation_model"] = pretrained_substation_model
+        config["model"]["custom_model_config"].\
+            pop("pretrained_model_config", None) # pretrained model extracted
+    
     if args.algorithm == "ppo":
         trainer = ppo.PPOTrainer
     elif args.algorithm == "sac":
         trainer = sac.SACTrainer
     else:
         raise ValueError("Unknown algorithm. Choices are: ppo, sac")
-    
+
     if args.use_tune:
         # Limit the number of rows.
         reporter = CLIReporter()
@@ -117,14 +135,14 @@ if __name__ == "__main__":
                 stop = stopper,
                 checkpoint_at_end=True,
                 num_samples = args.num_samples,
-                callbacks=[WandbLoggerCallback(
-                            project=args.project_name,
-                            group = args.group,
-                            api_key =  WANDB_API_KEY,
-                            log_config=True)],
-                loggers= [CustomTBXLogger],
+                # callbacks=[WandbLoggerCallback(
+                #             project=args.project_name,
+                #             group = args.group,
+                #             api_key =  WANDB_API_KEY,
+                #             log_config=True)],
+                # loggers= [CustomTBXLogger],
                 keep_checkpoints_num = 5,
-                checkpoint_score_attr="episode_reward_mean",
+                checkpoint_score_attr="evaluation/episode_reward_mean",
                 verbose = 1,
                 resume = args.resume
                 )
