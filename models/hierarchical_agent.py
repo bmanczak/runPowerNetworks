@@ -396,7 +396,11 @@ class HierarchicalAgent(TorchModelV2, nn.Module):
         self.sub_id_to_action, self.line_to_sub_id = get_env_spec(model_config["custom_model_config"]["env_config"])
         self.rllib_env =  Grid_Gym(model_config["custom_model_config"]["env_config"]); # copy of the training env to get the elem_topo_action_mappings
         self.element_to_action_num, self.action_to_topology = get_elem_action_topo_map(self.rllib_env)
+        # Get the adjacency matrices and keep them fixed during training
         self.cached_sub_adj = torch.from_numpy(get_sub_adjacency_matrix(self.line_to_sub_id))
+        self.cached_adj_node = torch.from_numpy(self.rllib_env.reset()["connectivity_matrix"])
+        assert self.cached_adj_node.sum().item() > 0, "Node adjacency matrix is empty"
+        assert self.cached_sub_adj.sum().item() > 0, "Substation adjacency matrix is empty"
 
         # Build the models
         self.node_sub_actor = HierarchicalGraphModel(self.node_model_config, self.sub_model_config,
@@ -420,21 +424,23 @@ class HierarchicalAgent(TorchModelV2, nn.Module):
         # Holds the last input, in case value branch is separate.
         self._last_flat_in = None
 
+    def is_dummy_batch(self,obs_flat):
+        """
+        Check if the observation comes from a dummy batch,
+        i.e. all observations equal to 0.
+        """
+        return torch.all(torch.eq(obs_flat, 0))
 
     def forward(self, input_dict: Dict[str, TensorType],
                 state: List[TensorType],
                 seq_lens: TensorType):
 
-        # print("FORWARD!")
-        #print("input dic keys", input_dict.keys())
-       # print("obs_flat", input_dict["obs_flat"].shape)
-        #print("input dic obs", input_dict["obs"])
-        # print("input dic rho type", type(input_dict["obs"]["rho"]))
+
         self.obs = vectorize_obs(input_dict["obs"], env_action_space = self.topo_spec)
         self.obs_non_vectorized = input_dict["obs"]
-
-        self.adj_node = input_dict["obs"]["connectivity_matrix"]
-        self.batch_size = self.adj_node.shape[0]
+        
+        self.batch_size = input_dict["obs_flat"].shape[0]
+        self.adj_node = self.cached_adj_node.repeat(self.batch_size, 1, 1).to(self.obs.device)
         self.adj_substation = self.cached_sub_adj.repeat(self.batch_size, 1, 1).to(self.obs.device)
         
         # Actor  
@@ -443,14 +449,8 @@ class HierarchicalAgent(TorchModelV2, nn.Module):
         busbar_one_logits, sub_choice = self.actor_head(self.node_embeddings_actor, self.substation_embeddings_actor, self.sub_choice)
         logits = self.actor_head.decode_to_probs(busbar_one_logits, sub_choice) # [BATCH_DIM, NUM_ACTIONS]
 
-        # print("Sub choice 0", sub_choice[0])
-        # print("Logits 0", logits[0])
         self.logits = logits
 
-        
-        # print("look here")
-        # print(torch.count_nonzero(obs))
-        # print(obs)
         if not (logits == logits).all(): # torch.count_nonzero(obs).item() == 0: # dummy batch will produce nan -> change logits manually
             logits = torch.zeros_like(logits)
             logging.warning("Batch produced nan in logits, setting to 0")
