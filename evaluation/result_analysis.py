@@ -380,6 +380,7 @@ def compile_table_df(data_per_algorithm:Dict) -> pd.DataFrame:
         df_dict[name]["mean_normalized_reward"] = (np.mean(list(data_per_algorithm[name]["agent_info"].rewards.values())) / df_dict[name]["mean_chronic_length"] ) * 8064
         
         df_dict[name]["0.05th_quantile "] = data_per_algorithm[name]["agent_info"].quantile_chronic_length(0.05)
+        df_dict[name]["median_chronic_length"] = data_per_algorithm[name]["agent_info"].quantile_chronic_length(0.5)
         df_dict[name]["num_imperfect_chron"] = data_per_algorithm[name]["agent_info"].num_imperfect_chronics
 
     # Dict to DataFrame

@@ -1,0 +1,96 @@
+env_config_train: &env_config_train
+  env_name: rte_case14_realistic_train
+  keep_actions: [change_bus]
+  keep_observations : [rho, gen_p, load_p, p_or, p_ex, timestep_overflow, maintenance , topo_vect]
+  convert_to_tuple: True # ignored if act_on_singe or medha_actions
+  act_on_single_substation: True # ignored if medha = True
+  medha_actions: True
+  use_parametric: False 
+  rho_threshold: 0.95
+  scale: True
+  run_until_threshold: True # not implemented yet
+  log_reward: False
+  disable_line: -1 #!grid_search [7,8,9, 11,14,15,17,19] # check different disabled lines
+  substation_actions: False
+  greedy_agent : False
+  conn_matrix: True
+
+env_config_val: &env_config_val
+  env_name: rte_case14_realistic_val
+  keep_actions: [change_bus]
+  keep_observations : [rho, gen_p, load_p, p_or, p_ex, timestep_overflow, maintenance , topo_vect]
+  convert_to_tuple: True # ignored if act_on_singe or medha_actions
+  act_on_single_substation: True # ignored if medha = True
+  medha_actions: True
+  use_parametric: False 
+  rho_threshold: 0.95
+  scale: True
+  run_until_threshold: True # not implemented yet
+  log_reward: False
+  disable_line: -1 #!grid_search [7,8,9, 11,14,15,17,19] # check different disabled lines
+  substation_actions: False
+  greedy_agent : False
+  conn_matrix: True
+
+hidden_dim: &hidden_dim 128
+n_heads: &n_heads 4 # !choice [248]
+dropout: &dropout 0.1 # !choice [0 0.05 0.1]
+num_in_features: &num_in_features 7
+
+node_model_config: &node_model_config
+  c_in: *num_in_features
+  c_hidden: 16
+  c_out: *hidden_dim
+  num_layers: 3
+  dp_rate: *dropout
+  heads: *n_heads
+
+sub_model_config: &sub_model_config
+    c_in: *hidden_dim
+    c_hidden: 16
+    c_out: *hidden_dim
+    num_layers: 2
+    dp_rate: *dropout
+    heads: *n_heads
+
+decoder_model_config: &decoder_model_config
+    d_q: *hidden_dim #sub_model_config[c_out]
+    d_k:  *hidden_dim  #node_model_config[c_out]
+    n_heads: 8
+    d_out: 128
+    clip_constant: 10.0
+ 
+
+model_config: &model_config
+  custom_model : hierarchical_agent #substation_module
+  custom_model_config : 
+    node_model_config: *node_model_config
+    sub_model_config: *sub_model_config
+    decoder_model_config: *decoder_model_config
+    env_config: *env_config_train
+   
+
+tune_config:
+  env: Grid_Gym_Greedy
+  env_config: *env_config_train  # config to pass to env class
+  model : *model_config
+  log_level: INFO
+  framework: torch
+  seed : !choice [21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50]
+  lr: 0.0001 #!choice [0.001, 0.0001] #tune.grid_search([1e-3 1e-41e-5])
+  kl_coeff: 0.2 # !choice [0.15, 0.3, 0.2, 0.25]
+  lambda:  0.95 # !quniform [0.94, 0.96, 0.01] 
+  vf_loss_coeff: 0.9 #!quniform [0.75,1,0.05]
+  vf_clip_param: 900 #!choice [100, 500, 1500, 2000]
+  rollout_fragment_length: 128 #!choice [64,128,200] # 16
+  sgd_minibatch_size: 32 #256 #!choice [256,512] # 64
+  train_batch_size: 64 #1024 #!choice [1024, 2048] #2048
+  num_sgd_iter: !choice [5, 15] #!choice [2,5,10,20,40]
+  ignore_worker_failures: True # continue if a worker crashes
+  num_workers : 2 #6 #!choice [2,4,6] #8
+  callbacks : LogDistributionsCallback
+  evaluation_interval: 10
+  evaluation_num_episodes : 100
+  evaluation_config: 
+    env: Grid_Gym
+    env_config: *env_config_val # use the validation env

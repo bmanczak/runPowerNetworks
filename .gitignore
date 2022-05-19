@@ -153,3 +153,5 @@ custom_callback_toy.py
 custom_policy.py
 custom_trainer.py
 example_two_step.py
+models/gcm.py
+models/ray_graph.py
