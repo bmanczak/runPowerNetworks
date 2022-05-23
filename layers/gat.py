@@ -19,7 +19,7 @@ class GATModel(nn.Module):
     def __init__(self, c_in, c_hidden, c_out, num_layers=2, layer_name="GAT", dp_rate=0.1, heads = 4, **kwargs):
         """
 
-        Stacks GNN layers.
+        Stacks GAT layers layers.
         Inputs:
             c_in - Dimension of input features
             c_hidden - Dimension of hidden features
@@ -36,25 +36,30 @@ class GATModel(nn.Module):
 
         layers = []
         # in_channels, out_channels = c_in, c_hidden#*heads
-        in_channels, out_channels = c_in, c_hidden*heads
-        # print("in_channels", in_channels)
-        # print("out_channels", out_channels)
+        
+        assert c_hidden%heads == 0, "Hidden dimension must be divisible by number of heads"
+        assert c_out%heads == 0, "Output dimension must be divisible by number of heads"
+
+        embed_dim = c_hidden//heads
+        in_channels, out_channels = c_in, embed_dim
+
         for l_idx in range(num_layers-1):
             layers += [
                 gnn_layer(in_channels=in_channels,
                           out_channels=out_channels,
+                          heads = heads,
                           **kwargs),
                 nn.ReLU(inplace=True),
                 nn.Dropout(dp_rate)
             ]
-            in_channels = c_hidden*heads 
-            print("in_channels", in_channels)
-
-        layers += [gnn_layer(in_channels=in_channels,
-                             out_channels=c_out,
+            in_channels = embed_dim*heads
+        # out_channels = c_out//heads
+        layers += [gnn_layer(in_channels=embed_dim*heads,
+                             out_channels=c_out//heads,
+                             heads = heads,
                              **kwargs)]
         self.layers = nn.ModuleList(layers)
-
+        
     def forward(self, x, edge_index):
         """
         Inputs:
@@ -71,7 +76,6 @@ class GATModel(nn.Module):
                 x = l(x)
             # print(layer_num, x.shape)
         return x
-
 
 class DecoderAttention(nn.Module):
 
@@ -110,7 +114,8 @@ class DecoderAttention(nn.Module):
             self.d_out = d_out
 
         # Multi-head attention to produce the new context vector
-        self.mhn = nn.MultiheadAttention(embed_dim = self.d_out, num_heads= n_heads, batch_first=True)
+        self.mhn = nn.MultiheadAttention(embed_dim = self.d_out, num_heads= n_heads, 
+                        kdim= self.d_k, vdim= self.d_k, batch_first=True)
 
         self.w_qs = nn.Linear(d_q, self.d_out)
         self.w_ks = nn.Linear(d_k,self.d_out)
@@ -123,19 +128,19 @@ class DecoderAttention(nn.Module):
     
             
     def forward(self, q, k, mask = None):
+    
         
-        q = self.w_qs(q)
-        k = self.w_ks(k)
-
         if mask is not None:
             assert mask.shape[0] == k.shape[0] and mask.shape[1] == k.shape[1] and mask.ndim == 2, \
                  "Mask should have shape [BATCH, MAX_NUM_ELEMs]"
 
         new_context, _ = self.mhn(q, k, k, key_padding_mask = mask)
-        
+
+        q = self.w_qs(new_context)
+        k = self.w_ks(k)
         attn = torch.bmm(new_context, k.transpose(1, 2))
         attn = attn / self.temperature
-        attn = self.clip_constant * F.tanh(attn)
+        attn = self.clip_constant * torch.tanh(attn)
 
         if mask is not None:
             attn = attn.masked_fill(mask.unsqueeze(1), FLOAT_MIN)

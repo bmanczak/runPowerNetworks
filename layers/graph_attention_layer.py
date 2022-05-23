@@ -5,6 +5,38 @@ import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 
+class GTrXL(nn.Module):
+
+    def __init__(self, hidden_dim, nheads,
+                num_layers = 2, num_in_features = None, dropout=0):
+        """
+        Stacks GAT layers.
+
+        Args:
+            hidden_dim ([int]): Number of features of each node after transformation.
+            nheads (int): number of attention heads.
+            num_layers (int, optional): Number of GAT layers. Defaults to 2.
+            dropout (int, optional): Dropout probability. Defaults to 0.
+            num_in_features ([int], optional): Number of input features. Defaults to None.
+                If not None then before the first layer a linear layer is added to transfrom 
+                the input from num_in_features to hidden_dim.
+        """
+        super(GTrXL, self).__init__()
+        self.num_in_features = num_in_features
+
+        if num_in_features is not None:
+            self.linear = nn.Linear(num_in_features, hidden_dim)
+
+        self.gat_layers = nn.ModuleList([
+                GATLayer(hidden_dim, nheads, dropout=dropout) for _ in range(num_layers)])
+
+    def forward(self, x, adj):
+        if self.num_in_features is not None:
+            x = self.linear(x)
+        for layer in self.gat_layers:
+            node_embeddings = layer(x, adj)
+
+        return node_embeddings 
 class GATLayer(nn.Module):
     def __init__(self, output_dim, nheads, dropout=0):
         super(GATLayer, self).__init__()
