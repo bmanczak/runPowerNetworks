@@ -79,6 +79,7 @@ class CustomGymEnv(GymEnv):
 
     def step(self, gym_action):
         g2op_act = self.action_space.from_gym(gym_action)
+        # print("g2op_act: ", g2op_act)
         # print_next_obs = False
         if self.reconnect_line is not None:
                 # print("reconnecting!!!")
@@ -89,6 +90,9 @@ class CustomGymEnv(GymEnv):
                 self.reconnect_line = None
                 
         g2op_obs, reward, done, info = self.init_env.step(g2op_act)
+        if info['is_illegal'] or info["is_ambiguous"]:
+            print("illegal action: ", g2op_act)
+            print("Info",info)
         # if (g2op_obs.topo_vect == -1).any():
         #     print("g2op_obs rho: ", g2op_obs.rho)
         # if print_next_obs:

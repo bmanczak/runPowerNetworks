@@ -77,6 +77,8 @@ def vectorize_obs(obs, env_action_space, hazard_threshold = 0.9):
 
     return vectorized_obs
 
+def logistic_func(x):
+    return 1/(1+torch.exp(-x))
 
 def pool_per_substation(arr, sub_to_id, pooling_operator = "mean"):
     """

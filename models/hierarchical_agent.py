@@ -20,7 +20,7 @@ from layers.graph_attention_layer import GTrXL
 from grid2op_env.grid_to_gym import Grid_Gym, get_env_spec
 from models.utils import pool_per_substation, dense_to_edge_index,\
      tensor_to_data_list, sequence_mask, get_sub_adjacency_matrix, \
-         get_elem_action_topo_map, vectorize_obs
+         get_elem_action_topo_map, vectorize_obs, logistic_func
 from evaluation.restore_agent import restore_agent
 
 
@@ -278,11 +278,20 @@ class Action_Decoder(nn.Module):
             action_to_topology,node_model_config, sub_model_config, obs_dim, act_dim ):
         super(Action_Decoder, self).__init__()
 
+        self.choose_sub_ln_key = "hidden_dim" if sub_model_config.get("hidden_dim", None) else "c_out"
         self.decoder_model_config = decoder_model_config
-        self.org_obs_projection = nn.Linear(obs_dim, 128)
-        self.decoder_model_config["d_out"] = decoder_model_config["d_out"] + 128 # for the extra observation 
-        self.decoder_model_config["d_q"] = decoder_model_config["d_q"] + 128 # for the extra observation 
-        self.decoder = DecoderAttention(**self.decoder_model_config)
+        self.org_obs_projection = nn.Linear(obs_dim, node_model_config[self.choose_sub_ln_key])
+
+        # Decide on the type of the decoder: GNN with node level classifier or 
+        # the attenton based decoding as in the paper "Attention learn to solve routing problems"
+        self.routing_decoder = self.decoder_model_config.get("routing_decoder", False)
+
+        # self.decoder_model_config["d_out"] = decoder_model_config["d_out"] + 128 # for the extra observation 
+        # self.decoder_model_config["d_q"] = decoder_model_config["d_q"] + 128 # for the extra observation 
+        # self.decoder = DecoderAttention(**self.decoder_model_config)
+        decoder_model_config["c_in"] = 3*node_model_config[self.choose_sub_ln_key] # concat node embeddings, substation embeddings and the projected observation
+        print("Decoder model config", decoder_model_config)
+        self.node_classifier = GATModel(**decoder_model_config)
 
         self.act_dim = act_dim
         self.sub_id_to_elem_id = sub_id_to_elem_id
@@ -292,26 +301,56 @@ class Action_Decoder(nn.Module):
         
         self.node_model_config = node_model_config
         self.sub_model_config = sub_model_config
-        self.choose_sub_ln_key = "hidden_dim" if sub_model_config.get("hidden_dim", None) else "c_out"
+        
 
     def forward(self, org_obs, node_embeddings, substation_embeddings, sub_choice):
 
         obs_representation = self.org_obs_projection(org_obs)
+        # print("Obs representation", obs_representation.shape)
         config_nodes, config_sub = self.fetch_node_and_sub_embeddings(node_embeddings,
                                          substation_embeddings,
                                         sub_choice)
 
-        padded_config_nodes = pad_sequence(config_nodes, batch_first=True)
-        mask = sequence_mask(seq = padded_config_nodes.clone().detach(), padding_idx = 0)[:, :, 0] # [BACTH SIZE, #MAX_NODES]
+        # if self.decoder_model_config.get("routing_decoding", False):
+        # padded_config_nodes = pad_sequence(config_nodes, batch_first=True)
+        # mask = sequence_mask(seq = padded_config_nodes.clone().detach(), padding_idx = 0)[:, :, 0] # [BACTH SIZE, #MAX_NODES]
         
-        # print("Obs representation", obs_representation.shape)
-        # print("Config nodes", padded_config_nodes.shape)
-        # print("Config sub", config_sub.shape)
-        query = torch.concat([obs_representation.unsqueeze(1), config_sub], dim = -1)
+        # query = torch.concat([obs_representation.unsqueeze(1), config_sub], dim = -1)
 
-        busbar_one_logits = self.decoder(q = query, k = padded_config_nodes, mask = mask)
+        # busbar_one_logits = self.decoder(q = query, k = padded_config_nodes, mask = mask)
+        data_lst = []
+        for batch_num, config_node in enumerate(config_nodes):
+            num_nodes = config_node.shape[0]
+            # print("Obs representation shape", obs_representation[batch_num].unsqueeze(0).repeat(num_nodes, 1).shape)
+            # print("Config sub shape", config_sub[batch_num].repeat(num_nodes,1).shape)
+            # print("Config node shape", config_node.shape)
+            x_enriched = torch.concat([obs_representation[batch_num].unsqueeze(0).repeat(num_nodes, 1),
+                            config_sub[batch_num].repeat(num_nodes,1), config_node], dim = -1)
+            # x_enriched =config_node
+            # print("X enriched shape", x_enriched.shape)
+            
+            # data_lst.append(Data(x = x_enriched, edge_index = dense_to_edge_index(torch.ones((num_nodes, num_nodes)))))
+            data_lst.append(Data(x = x_enriched, edge_index = 
+             dense_to_edge_index(torch.ones_like(torch.ones((num_nodes, num_nodes)) ))
+            ))
 
-        return busbar_one_logits, sub_choice
+        batch_to_classify = Batch.from_data_list(data_lst)
+        node_preds = self.node_classifier(batch_to_classify.x, batch_to_classify.edge_index)
+        print("THESE NODE PREDS", node_preds)
+
+        # Getting predictions back to a list of size B
+        node_preds_lst = []
+        ix = 0
+        for batch_num, config_node in enumerate(config_nodes):
+            node_preds_lst.append(node_preds[ix:ix+config_node.shape[0]])
+            ix += config_node.shape[0]
+
+        assert sum([len(elem) for elem in node_preds_lst])==node_preds.shape[0],\
+                f"Not all nodes have predictions. Should have f{node_preds.shape[0]} predictions but \
+                    there are {sum([len(elem) for elem in node_preds_lst])} predictions"
+
+        return node_preds_lst, sub_choice
+
 
     def fetch_node_and_sub_embeddings(self, node_embeddings, substation_embeddings, sub_choice):
         """
@@ -340,12 +379,14 @@ class Action_Decoder(nn.Module):
         assert torch.abs((substation_embeddings[0, sub_choice[0,0].item(), :]-sub_choice_embeddings[0, 0, :])).sum() < 1e-6, "Sub choice embeddings are incorrect"
         return tensor_lst, sub_choice_embeddings
 
-    def decode_to_probs(self,busbar_one_logits, sub_choice):
+    def decode_to_probs(self,busbar_probs, sub_choice):
         
-        B = busbar_one_logits.shape[0] # batch size
+        # B = busbar_probs.shape[0] # batch size
+        B = len(busbar_probs) # batch size
         
         # convert to probabilities
-        busbar_one_probs = torch.softmax(busbar_one_logits, dim = -1) #1 /  (1 + torch.exp(-busbar_one_logits))
+        # busbar_one_probs = torch.softmax(busbar_probs, dim = -1) #1 /  (1 + torch.exp(-busbar_one_logits))
+        busbar_one_probs = busbar_probs
         # print("Busbar one probs shape", busbar_one_probs)
         # Get the elements of the chosen substation
         switchable_elem_subs = [self.sub_id_to_elem_id[single_sub_choice.item()] for single_sub_choice in sub_choice] 
@@ -360,11 +401,17 @@ class Action_Decoder(nn.Module):
             
             # print("Actions_sub", actions_sub)
             # print("Num_modifiable_elements", num_modifiable_elements)
-          
+            probs_bus_bar_one = logistic_func(busbar_one_probs[num_in_batch]).flatten() # proper p
+            # print("Probs bus bar one", probs_bus_bar_one)
+            probs_bus_bar_two = 1 - probs_bus_bar_one
             probs_bus_one_bus_two = torch.stack( 
-                [busbar_one_probs[num_in_batch], # prob of the elements being on busbar 1
-                1-busbar_one_probs[num_in_batch]] # probs of the elements being on busbar 2
-                ).squeeze(1)[:, :num_modifiable_elements] # [2, NUM_ELEMENTS] where 2 stands for the two buses
+                [torch.log(probs_bus_bar_one), # prob of the elements being on busbar 1
+                torch.log(probs_bus_bar_two)] # probs of the elements being on busbar 2
+                ) # [2, NUM_ELEMENTS] where 2 stands for the two buses
+            # print("Shape Probs bus one bus two", probs_bus_one_bus_two.shape)
+            # print("Probs bus one bus two", probs_bus_one_bus_two)
+            # probs_bus_one_bus_two = busbar_probs[num_in_batch].T
+            # print("Transposed probs_bus_one_bus_two", probs_bus_one_bus_two.T.shape)
 
             actions_bus_tensor = torch.from_numpy(actions_sub)[:,:,1]
             actions_bus_ix_tensor = actions_bus_tensor - 1 # bus 1 at ix 0, bus 2 at ix 2
@@ -373,7 +420,7 @@ class Action_Decoder(nn.Module):
             probs_to_choose = probs_bus_one_bus_two.T.unsqueeze(0).repeat(num_actions_at_sub,1,1) # [NUM_ACTIONS, NUM_ELEMENTS, 2]
             probs_per_node = torch.gather(input = probs_to_choose, dim = -1, index = actions_bus_ix_tensor.unsqueeze(-1))
             # PROD when probs, SUM when LOG PROBS 
-            probs_per_available_action = torch.prod(probs_per_node, dim = 1).squeeze(1)
+            probs_per_available_action = torch.sum(probs_per_node, dim = 1).squeeze(1)
             # final_action_distr_logits[num_in_batch, one_actions_for_topo] = torch.log(probs_per_available_action)
             final_action_distr_logits[num_in_batch, one_actions_for_topo] = probs_per_available_action
             
@@ -381,7 +428,7 @@ class Action_Decoder(nn.Module):
             # F.softmax(final_action_distr_logits[0])
         # print("Sub choice", sub_choice)
         # print("Action for topo", actions_for_topo)
-        # print("Final action distr logits", final_action_distr_logits)
+        # print("Final action distr logits", F.softmax(final_action_distr_logits, dim = -1))
         return final_action_distr_logits
             
         
@@ -467,12 +514,12 @@ class HierarchicalAgent(TorchModelV2, nn.Module):
         # For the value function downscale substation_embeddings to 32 then concat
         self.value_fn_downscale = nn.Linear(self.sub_model_config[self.choose_sub_ln_key] , 32)
         self.value_fn_classify = nn.Linear(32*14, 1) # concat of 14 substaions
-        # self.value_branch = nn.Sequential(
-        #   nn.Linear(self.obs_dim, 256), nn.ReLU(),
-        #   nn.Linear(256,256), nn.ReLU(),
-        #   nn.Linear(256,256),nn.ReLU(),
-        #    nn.Linear(256,1)
-        # )  
+        self.value_branch = nn.Sequential(
+          nn.Linear(self.obs_dim, 256), nn.ReLU(inplace=True),
+          nn.Linear(256,256), nn.ReLU(inplace=True),
+          nn.Linear(256,256),nn.ReLU(inplace=True),
+           nn.Linear(256,1)
+        )  
 
     
          # Holds the current "base" output (before logits layer).
@@ -519,7 +566,7 @@ class HierarchicalAgent(TorchModelV2, nn.Module):
         self.obs = vectorize_obs(input_dict["obs"], env_action_space = self.topo_spec)
         self.obs_non_vectorized = input_dict["obs"]
         self.obs_flat = input_dict["obs_flat"]
-        
+
         self.batch_size = input_dict["obs_flat"].shape[0]
         self.adj_node = self.cached_node_adj.repeat(self.batch_size, 1, 1).to(self.obs.device)
         self.adj_substation = self.cached_sub_adj.repeat(self.batch_size, 1, 1).to(self.obs.device)
@@ -561,15 +608,16 @@ class HierarchicalAgent(TorchModelV2, nn.Module):
         # # self.get_num_comp_graph_nodes()
         # if self.training:
         #     self.grad_dots.clear()
+        # print("MODEL WEIGHTS", self.actor_head.layer[0].weight)
         return logits, state
 
     def value_function(self) -> TensorType:
         assert self.obs is not None, "must call forward() first"
-        _, self.substation_embeddings_critic, _ = self.node_sub_actor(self.obs, self.adj_node, self.adj_substation, self.obs_non_vectorized)
-        self.substation_embedding_critic = self.substation_embeddings_critic + self.substation_embeddings_actor
-        down_concat = self.value_fn_downscale(self.substation_embedding_critic).reshape(self.batch_size, -1)
-        critic_out = self.value_fn_classify(down_concat).squeeze(-1)
-        # critic_out = self.value_branch(self.obs_flat)
+        # _, self.substation_embeddings_critic, _ = self.node_sub_actor(self.obs, self.adj_node, self.adj_substation, self.obs_non_vectorized)
+        # self.substation_embedding_critic = self.substation_embeddings_critic + self.substation_embeddings_actor
+        # down_concat = self.value_fn_downscale(self.substation_embedding_critic).reshape(self.batch_size, -1)
+        # critic_out = self.value_fn_classify(down_concat).squeeze(-1)
+        critic_out = self.value_branch(self.obs_flat)
         # print("End critic")
         # print("-"*40)
-        return critic_out
+        return critic_out.squeeze(-1)

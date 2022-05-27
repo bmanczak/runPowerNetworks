@@ -8,7 +8,7 @@ class AgentFromGym(BaseAgent):
     def act(self, obs):
         
         gym_obs = self.rllib_env.obs_grid2rllib(obs)
-        gym_act = self.trained_agent.compute_action(gym_obs)
+        gym_act = self.trained_agent.compute_single_action(gym_obs)
     
         grid2op_act = self.rllib_env.action_rllib2grid(gym_act) #self.rllib_env.env_gym.action_space.from_gym(gym_act)
 
@@ -26,9 +26,8 @@ class AgentThresholdEnv(BaseAgent):
         if max(obs.rho) < self.rho_threshold:
             gym_act = 0 # do nothing 
         else:
-            #print("taking action!", "rho", obs.rho)
             gym_obs = self.rllib_env.obs_grid2rllib(obs)
-            gym_act = self.trained_agent.compute_action(gym_obs)
+            gym_act = self.trained_agent.compute_single_action(gym_obs)
 
         grid2op_act = self.rllib_env.action_rllib2grid(gym_act) #self.rllib_env.env_gym.action_space.from_gym(gym_act)
 
@@ -48,9 +47,9 @@ class AgentThresholdEnvGreedy(BaseAgent):
         if max(obs.rho) < self.rho_threshold:
             gym_act = 0
         else:
-            gym_act = self.trained_agent.compute_action(gym_obs)
-        
-        grid2op_act = self.rllib_env.env_gym.action_mapper(sub_id = gym_act, obs = obs)
+            gym_act = self.trained_agent.compute_single_action(gym_obs)
+
+        grid2op_act = self.rllib_env.env_gym.action_mapper(sub_id = gym_act, obs = obs) 
     
         return grid2op_act
 

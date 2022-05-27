@@ -16,7 +16,8 @@ FLOAT_MAX = 3.4e38
 
 class GATModel(nn.Module):
 
-    def __init__(self, c_in, c_hidden, c_out, num_layers=2, layer_name="GAT", dp_rate=0.1, heads = 4, **kwargs):
+    def __init__(self, c_in, c_hidden, c_out, num_layers=2, layer_name="GAT", dp_rate=0.1, heads = 4,
+                    out_heads = None, **kwargs):
         """
 
         Stacks GAT layers layers.
@@ -36,12 +37,12 @@ class GATModel(nn.Module):
 
         layers = []
         # in_channels, out_channels = c_in, c_hidden#*heads
-        
-        assert c_hidden%heads == 0, "Hidden dimension must be divisible by number of heads"
-        assert c_out%heads == 0, "Output dimension must be divisible by number of heads"
-
+        out_heads = heads if out_heads is None else out_heads
         embed_dim = c_hidden//heads
         in_channels, out_channels = c_in, embed_dim
+
+        assert c_hidden%heads == 0, "Hidden dimension must be divisible by number of heads"
+        assert c_out%out_heads == 0, "Output dimension must be divisible by number of heads"
 
         for l_idx in range(num_layers-1):
             layers += [
@@ -55,8 +56,8 @@ class GATModel(nn.Module):
             in_channels = embed_dim*heads
         # out_channels = c_out//heads
         layers += [gnn_layer(in_channels=embed_dim*heads,
-                             out_channels=c_out//heads,
-                             heads = heads,
+                             out_channels=c_out//out_heads,
+                             heads = out_heads,
                              **kwargs)]
         self.layers = nn.ModuleList(layers)
         
