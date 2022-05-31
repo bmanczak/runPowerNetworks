@@ -97,20 +97,6 @@ if __name__ == "__main__":
         config["env_config"]["with_opponent"] = True
         config["evaluation_config"]["env_config"]["with_opponent"] = True
     
-    pretrained_model_config = config["model"]["custom_model_config"]\
-                    .get("pretrained_model_config", None)
-    print(pretrained_model_config)
-    if pretrained_model_config is not None:
-        # pretrained_substation_model = GreedySubModel(**pretrained_model_config)
-        pretrained_substation_model = GreedySubModelNoWorker(model= pickle.load(open(pretrained_model_config["model_path"], "rb")),
-                                                            dist_class=pickle.load(open(pretrained_model_config["dist_class_path"], "rb")),
-                                                            env_config= pickle.load(open(pretrained_model_config["env_config_path"], "rb")),
-                                                            num_to_sub=pickle.load(open(pretrained_model_config["num_to_sub_path"], "rb")))
-
-        config["model"]["custom_model_config"]["pretrained_substation_model"] = pretrained_substation_model
-        config["model"]["custom_model_config"].\
-            pop("pretrained_model_config", None) # pretrained model extracted
-    
     print("Config is", config)
     if args.algorithm == "ppo":
         trainer = ppo.PPOTrainer
@@ -118,8 +104,8 @@ if __name__ == "__main__":
         trainer = sac.SACTrainer
     else:
         raise ValueError("Unknown algorithm. Choices are: ppo, sac")
-    # print("The final env config is:")
-    # print(config["env_config"])
+ 
+    ### Hierarchical specific setup: START
     env_config_train = config["env_config"]
     env_config_val = config["evaluation_config"]["env_config"]
 
@@ -130,87 +116,28 @@ if __name__ == "__main__":
             return "choose_action_agent"
         else:
             return "choose_substation_agent"
-    
-    config = {
-            "env": HierarchicalGridGym,
-            "env_config": env_config_train,
-            "multiagent": {
-                "policies": {
-                    "choose_substation_agent": (
-                        PPOTorchPolicy,
-                        grid_gym.observation_space,
-                        Discrete(8),
-                            {"gamma": 0.99,
-                            "lr": 0.0001, #!choice [0.001, 0.0001] #tune.grid_search([1e-3 1e-41e-5])
-                            "kl_coeff": 0.2, # !choice [0.15, 0.3, 0.2, 0.25]
-                            "lambda":  0.95, # !quniform [0.94, 0.96, 0.01] 
-                            "vf_loss_coeff": 0.9 ,#!quniform [0.75,1,0.05]
-                            "vf_clip_param": 1500 ,#!choice [100, 500, 1500, 2000]
-                            "rollout_fragment_length": 2000 ,#!choice [64,128,200] # 16
-                            "sgd_minibatch_size": 128, #256 #!choice [256,512] # 64
-                            "train_batch_size": 256, #1024 #!choice [1024, 2048] #2048
-                            "num_sgd_iter": 5,
-                            "entropy_coeff": 0.01,
-                            "model": {
-                                "fcnet_hiddens": [256,256,256],
-                                "fcnet_activation": "relu",
-                                "custom_model" : "fcn",
-                                "custom_model_config" : {
-                                    "use_parametric": False,
-                                    "env_obs_name": "grid"
-                                }
-                            }
-                        },
-                    ),
-                    "choose_action_agent": (
-                        PPOTorchPolicy,
-                        gym.spaces.Dict({
-                            "action_mask":Box(0, 1, shape=(grid_gym.action_space.n, ), dtype=np.float32),
-                            "regular_obs": grid_gym.observation_space,
-                            # "grid": gym.spaces.Tuple([grid_gym.observation_space, Discrete(8)])
-                            "chosen_substation": Discrete(8)
-                        }) ,
-                        grid_gym.action_space,
-                        
-                            {"gamma": 0.99,
-                            "lr": 0.0001, #!choice [0.001, 0.0001] #tune.grid_search([1e-3 1e-41e-5])
-                            "kl_coeff": 0.2, # !choice [0.15, 0.3, 0.2, 0.25]
-                            "lambda":  0.95, # !quniform [0.94, 0.96, 0.01] 
-                            "vf_loss_coeff": 0.9 ,#!quniform [0.75,1,0.05]
-                            "vf_clip_param": 1500 ,#!choice [100, 500, 1500, 2000]
-                            "rollout_fragment_length": 2000 ,#!choice [64,128,200] # 16
-                            "sgd_minibatch_size": 128, #256 #!choice [256,512] # 64
-                            "train_batch_size": 256, #1024 #!choice [1024, 2048] #2048
-                            "num_sgd_iter": 5,
-                            "entropy_coeff": 0.01,
-                            "model": {
-                                "fcnet_hiddens": [256,256,256],
-                                "fcnet_activation": "relu",
-                                "custom_model" : "fcn",
-                                "custom_model_config" : {
-                                    "use_parametric": True,
-                                    "env_obs_name": ["regular_obs", "chosen_substation"]
-                                }
-                            }
-                        },
-                    ),
-                },
-                "policy_mapping_fn": policy_mapping_fn,
-            },
-            "num_workers": 2,
-            "framework": "torch",
-            #  "rollout_fragment_length": 128 ,#!choice [64,128,200] # 16
-            # "sgd_minibatch_size": 256, #256 #!choice [256,512] # 64
-            # "train_batch_size": 1024, #1024 #!choice [1024, 2048] #2048
-            # "num_sgd_iter": 5,
-            "callbacks": LogDistributionsCallback,
-            "evaluation_interval": 10,
-            "evaluation_num_episodes" : 100,
-            "evaluation_config": { 
-                "env": HierarchicalGridGym, 
-                "env_config": env_config_val # use the validation env
-            }
-        } 
+
+    ### Fixed params
+    config["multiagent"]["policies"]["choose_substation_agent"] = (
+        PPOTorchPolicy,
+        grid_gym.observation_space,
+        Discrete(8),
+        config["multiagent"]["policies"]["choose_substation_agent"]["config"]
+    )
+
+    config["multiagent"]["policies"]["choose_action_agent"] = (
+        PPOTorchPolicy,
+        gym.spaces.Dict({
+            "action_mask":Box(0, 1, shape=(grid_gym.action_space.n, ), dtype=np.float32),
+            "regular_obs": grid_gym.observation_space,
+            "chosen_substation": Discrete(8)
+        }) ,
+        grid_gym.action_space,
+        config["multiagent"]["policies"]["choose_action_agent"]["config"]
+    )
+
+    config["multiagent"]["policy_mapping_fn"] = policy_mapping_fn
+    ### Hierarchical specific setup: END 
 
     if args.use_tune:
         # Limit the number of rows.

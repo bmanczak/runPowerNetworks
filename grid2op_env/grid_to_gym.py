@@ -1,5 +1,4 @@
 #from grid2op.Backend.PandaPowerBackend import PandaPowerBackend
-from cmath import inf
 import numpy as np
 import grid2op
 import os

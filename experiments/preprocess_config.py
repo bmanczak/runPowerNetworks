@@ -1,6 +1,6 @@
 from numpy import save
 import yaml
-from grid2op_env.grid_to_gym import Grid_Gym
+from grid2op_env.grid_to_gym import Grid_Gym, HierarchicalGridGym
 from experiments.callback import LogDistributionsCallback
 from ray import tune
 
@@ -9,7 +9,8 @@ mapper = {
         "LogDistributionsCallback": LogDistributionsCallback
     },
     "env":{
-        "Grid_Gym": Grid_Gym
+        "Grid_Gym": Grid_Gym,
+        "HierarchicalGridGym": HierarchicalGridGym
     }
 }
 def preprocess_config(config):
