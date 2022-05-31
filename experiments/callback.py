@@ -59,7 +59,10 @@ class LogDistributionsCallback(DefaultCallbacks):
                        policies: Dict[str, Policy], episode: Episode,
                        env_index: int, **kwargs):
         # Make sure this episode is really done.
-        episode.custom_metrics["num_env_steps"] = episode.last_info_for()["steps"]
+        try: # flat env
+            episode.custom_metrics["num_env_steps"] = episode.last_info_for("choose_action_agent")["steps"]
+        except: # multi-agent env
+            episode.custom_metrics["num_env_steps"] = episode._agent_to_last_info["choose_substation_agent"]["steps"]
         
     def on_learn_on_batch(self, *, policy: Policy, train_batch: SampleBatch,
                         result: dict, **kwargs) -> None:
@@ -78,6 +81,9 @@ class LogDistributionsCallback(DefaultCallbacks):
             train_batch_new_obs = train_batch["new_obs"]
             train_batch_actions = train_batch["actions"]
 
+        # print("train_batch_obs shape", train_batch_obs.shape)
+        # print("train_batch_new_obs 0", train_batch_obs[0])
+        # print("actions", train_batch_actions)
         changed_topo_vec = np.any(train_batch_new_obs[:, -56:]!=train_batch_obs[:, -56:], axis = -1)
         not_changed_topo_vec = 1 - changed_topo_vec
         non_terminal_actions = np.any(train_batch_new_obs[:, -56:] != -np.ones_like(train_batch_new_obs[:, -56:]), axis = -1)        

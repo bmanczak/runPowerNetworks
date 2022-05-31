@@ -57,7 +57,8 @@ class SimpleMlp(TorchModelV2, nn.Module):
         self.vf_share_layers = model_config.get("vf_share_layers")
         self.parametric_action_space = model_config["custom_model_config"].get("use_parametric", False)
         self.env_obs_name = model_config["custom_model_config"].get("env_obs_name", "grid")
-      
+        if not isinstance(self.env_obs_name, list):
+            self.env_obs_name = [self.env_obs_name]
         logging.info(f"Using parametric action space equals {self.parametric_action_space}")
        
         layers = []
@@ -97,15 +98,19 @@ class SimpleMlp(TorchModelV2, nn.Module):
         # Holds the last input, in case value branch is separate.
         self._last_flat_in = None
 
+        print("THE hidden layers are: ", self._hidden_layers )
+
     
     def forward(self, input_dict: Dict[str, TensorType],
                 state: List[TensorType],
                 seq_lens: TensorType):
 
         if self.parametric_action_space:
-            obs = torch.concat(
-                            [val for val in input_dict["obs"][self.env_obs_name].values()], dim=1) # [BATCH_DIM, obs_dim]
-            #print("obs", obs.shape, obs)
+            # Change incompatible with flat parametric action space
+            regular_obs = torch.concat(
+                            [val for val in input_dict["obs"]["regular_obs"].values()], dim=1)
+            chosen_sub = input_dict["obs"]["chosen_substation"]
+            obs = torch.cat([regular_obs, chosen_sub], dim=1) # [BATCH_DIM, obs_dim]
             inf_mask = torch.clamp(torch.log(input_dict["obs"]["action_mask"]), FLOAT_MIN, FLOAT_MAX)
         else:
             if isinstance(input_dict["obs_flat"], OrderedDict):

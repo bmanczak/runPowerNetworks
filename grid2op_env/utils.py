@@ -67,7 +67,7 @@ def get_sub_id_to_elem_id(env):
 
     return sub_id_to_elem_id
 
-def get_sub_id_to_action(action_list):
+def get_sub_id_to_action(action_list, return_action_ix = False):
     """
     Get the mapping between the substation id to the actions from 
     the action list.
@@ -76,15 +76,20 @@ def get_sub_id_to_action(action_list):
 
     Args:
         action_list (list): List of Grid2Op actions.
+        return_action_ix (bool): If True, returns the index of the action in the action list.
+                                    Otherwise returnes the action in Grid2Op format.
     """
 
     sub_id_to_action = defaultdict(list)
-    for action in action_list:
+    for act_num, action in enumerate(action_list):
         for i, sub_id in enumerate(action.as_dict()["set_bus_vect"]["modif_subs_id"]):
             if i > 0:
                 raise ValueError("Each action in action_list must only affects one substation.")
             else:
-                sub_id_to_action[int(sub_id)].append(action)
+                if return_action_ix:
+                    sub_id_to_action[int(sub_id)].append(act_num)
+                else:
+                    sub_id_to_action[int(sub_id)].append(action)
 
     return sub_id_to_action
 

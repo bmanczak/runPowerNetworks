@@ -1,4 +1,5 @@
 #from grid2op.Backend.PandaPowerBackend import PandaPowerBackend
+from cmath import inf
 import numpy as np
 import grid2op
 import os
@@ -28,7 +29,9 @@ from grid2op_env.utils import get_sub_id_to_elem_id, reverse_dict, get_sub_id_to
 from models.utils import vectorize_obs
 from models.greedy_agent import RoutingTopologyGreedy
 from definitions import ROOT_DIR
+from ray.rllib.env import MultiAgentEnv
 
+logger = logging.getLogger(__name__)
 class CustomGymEnv(GymEnv):
     """
     fully implements the openAI gym API by using the :class:`GymActionSpace` and :class:`GymObservationSpace`
@@ -90,9 +93,9 @@ class CustomGymEnv(GymEnv):
                 self.reconnect_line = None
                 
         g2op_obs, reward, done, info = self.init_env.step(g2op_act)
-        if info['is_illegal'] or info["is_ambiguous"]:
-            print("illegal action: ", g2op_act)
-            print("Info",info)
+        # if info['is_illegal'] or info["is_ambiguous"]:
+        #     print("illegal action: ", g2op_act)
+        #     print("Info",info)
         # if (g2op_obs.topo_vect == -1).any():
         #     print("g2op_obs rho: ", g2op_obs.rho)
         # if print_next_obs:
@@ -338,6 +341,107 @@ class Grid_Gym(gym.Env):
             if self.log_reward:
                 reward = np.log2(max(1,reward))
         return obs, reward, done, info
+
+
+class HierarchicalGridGym(MultiAgentEnv):
+    def __init__(self, env_config):
+        super().__init__()
+        self._skip_env_checking = True
+        print("In that hierarchical init")
+        self.env_gym = Grid_Gym(env_config)
+        
+        self.low_level_agent_id = "choose_action_agent"
+        self.high_level_agent_id = "choose_substation_agent"
+
+        self.sub_id_to_action_num = get_sub_id_to_action(self.env_gym.all_actions_dict,
+                return_action_ix= True)
+        self.num_to_sub = {i:k for i,k in enumerate(self.sub_id_to_action_num.keys())}
+        self.info = {"steps": 0}
+
+        print("The sub_id_to_action_num is", self.sub_id_to_action_num)
+        print("The num_to_sub is", self.num_to_sub)
+
+    def map_sub_to_mask(self):
+        """
+        Produces a mask given for the low level agent 
+        given the prediction of the high level agent.
+        """
+        
+        action_mask = np.array([0.] * 106, dtype=np.float32)
+        # print("Action mask shape", action_mask.shape)
+        modified_sub = self.num_to_sub[self.high_level_pred]  
+        aval_actions = self.sub_id_to_action_num[modified_sub]
+        # print("Modified sub", self.high_level_pred)
+        # print("Aval actions", aval_actions)
+        action_mask[aval_actions] = 1.
+
+        return action_mask
+
+    def reset(self):
+        self.cur_obs = self.env_gym.reset()
+        self.high_level_pred = None # the substation to modify
+        self.steps_remaining_at_level = None
+        # self.num_high_level_steps = 0
+        # current low level agent id. This must be unique for each high level
+        # step since agent ids cannot be reused.
+        return {
+            self.high_level_agent_id: self.cur_obs,
+        }
+
+    def step(self, action_dict):
+        assert len(action_dict) == 1, action_dict
+        if self.high_level_agent_id in action_dict:
+            return self._high_level_step(action_dict["choose_substation_agent"])
+        else:
+            return self._low_level_step(list(action_dict.values())[0])
+
+    def _high_level_step(self, action):
+        # print("high level step", action)
+        logger.debug("High level agent sets goal")
+        self.high_level_pred = action       
+        action_mask = self.map_sub_to_mask()
+        obs = {self.low_level_agent_id: {
+            "action_mask": action_mask,
+            "regular_obs":self.cur_obs ,
+            "chosen_substation": self.high_level_pred,
+        }}
+        rew = {self.low_level_agent_id: 0}
+        done = {"__all__": False}
+        return obs, rew, done, {self.low_level_agent_id: self.info}
+
+    def _low_level_step(self, action):
+        # print("low level step", action)
+        logger.debug("Low level agent step {}".format(action))
+        # print("Steps remaining", self.steps_remaining_at_level)
+        # self.steps_remaining_at_level -= 1
+        # cur_pos = tuple(self.cur_obs[0])
+        # goal_pos = self.env_gym._get_new_pos(cur_pos, self.high_level_pred)
+
+        # Step in the actual env
+        f_obs, f_rew, f_done, f_info = self.env_gym.step(action)
+        self.info["steps"] = f_info.get("steps", 0)
+        # new_pos = tuple(f_obs[0])
+        self.cur_obs = f_obs
+
+        # Calculate low-level agent observation and reward
+        # obs = {self.low_level_agent_id: [f_obs, self.high_level_pred]}
+        
+        rew = {self.low_level_agent_id: f_rew}
+
+        # Handle env termination & transitions back to higher level
+        done = {"__all__": False}
+        if f_done:
+            done["__all__"] = True
+            logger.debug("high level final reward {}".format(f_rew))
+        # else:
+            # done[self.low_level_agent_id] = True # go to high level
+        rew = {self.low_level_agent_id: f_rew,
+               self.high_level_agent_id: f_rew}
+        obs = {self.high_level_agent_id: f_obs}
+        # print("Low level done", done)
+        # print("Low level obs", obs)
+        # print("f_info", f_info)
+        return obs, rew, done, {self.high_level_agent_id: self.info}
 
 class Grid_Gym_Greedy(Grid_Gym):
 
