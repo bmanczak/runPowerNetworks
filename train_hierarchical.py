@@ -98,6 +98,10 @@ if __name__ == "__main__":
         config["evaluation_config"]["env_config"]["with_opponent"] = True
     
     print("Config is", config)
+    for key,val in config.items():
+        print(f"Key {key} has value {val}")
+        print("-"*20)
+
     if args.algorithm == "ppo":
         trainer = ppo.PPOTrainer
     elif args.algorithm == "sac":
@@ -120,7 +124,11 @@ if __name__ == "__main__":
     ### Fixed params
     config["multiagent"]["policies"]["choose_substation_agent"] = (
         PPOTorchPolicy,
-        grid_gym.observation_space,
+        # grid_gym.observation_space,
+        gym.spaces.Dict({
+            "regular_obs": grid_gym.observation_space,
+            "chosen_action": Discrete(grid_gym.action_space.n),
+        }) ,
         Discrete(8),
         config["multiagent"]["policies"]["choose_substation_agent"]["config"]
     )

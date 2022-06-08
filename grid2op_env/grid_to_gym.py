@@ -29,6 +29,7 @@ from models.utils import vectorize_obs
 from models.greedy_agent import RoutingTopologyGreedy
 from definitions import ROOT_DIR
 from ray.rllib.env import MultiAgentEnv
+from ray.rllib.models import ModelCatalog
 
 logger = logging.getLogger(__name__)
 class CustomGymEnv(GymEnv):
@@ -345,8 +346,10 @@ class Grid_Gym(gym.Env):
 class HierarchicalGridGym(MultiAgentEnv):
     def __init__(self, env_config):
         super().__init__()
+
+        self.action_encoder = ModelCatalog.get_preprocessor_for_space(Discrete(106))
         self._skip_env_checking = True
-        print("In that hierarchical init")
+        
         self.env_gym = Grid_Gym(env_config)
         
         self.low_level_agent_id = "choose_action_agent"
@@ -357,8 +360,8 @@ class HierarchicalGridGym(MultiAgentEnv):
         self.num_to_sub = {i:k for i,k in enumerate(self.sub_id_to_action_num.keys())}
         self.info = {"steps": 0}
 
-        print("The sub_id_to_action_num is", self.sub_id_to_action_num)
-        print("The num_to_sub is", self.num_to_sub)
+        logger.debug("The sub_id_to_action_num is", self.sub_id_to_action_num)
+        logger.debug("The num_to_sub is", self.num_to_sub)
 
     def map_sub_to_mask(self):
         """
@@ -367,11 +370,8 @@ class HierarchicalGridGym(MultiAgentEnv):
         """
         
         action_mask = np.array([0.] * 106, dtype=np.float32)
-        # print("Action mask shape", action_mask.shape)
         modified_sub = self.num_to_sub[self.high_level_pred]  
         aval_actions = self.sub_id_to_action_num[modified_sub]
-        # print("Modified sub", self.high_level_pred)
-        # print("Aval actions", aval_actions)
         action_mask[aval_actions] = 1.
 
         return action_mask
@@ -380,12 +380,14 @@ class HierarchicalGridGym(MultiAgentEnv):
         self.cur_obs = self.env_gym.reset()
         self.high_level_pred = None # the substation to modify
         self.steps_remaining_at_level = None
-        # self.num_high_level_steps = 0
-        # current low level agent id. This must be unique for each high level
-        # step since agent ids cannot be reused.
-        return {
-            self.high_level_agent_id: self.cur_obs,
+    
+        one_hot_encoded_action = np.zeros(106)
+
+        obs = {self.high_level_agent_id: {
+                        "regular_obs": self.cur_obs,
+                        "chosen_action": 0}
         }
+        return obs
 
     def step(self, action_dict):
         assert len(action_dict) == 1, action_dict
@@ -395,10 +397,11 @@ class HierarchicalGridGym(MultiAgentEnv):
             return self._low_level_step(list(action_dict.values())[0])
 
     def _high_level_step(self, action):
-        # print("high level step", action)
         logger.debug("High level agent sets goal")
         self.high_level_pred = action       
+        # Create a mask using the predicited action
         action_mask = self.map_sub_to_mask()
+
         obs = {self.low_level_agent_id: {
             "action_mask": action_mask,
             "regular_obs":self.cur_obs ,
@@ -409,22 +412,14 @@ class HierarchicalGridGym(MultiAgentEnv):
         return obs, rew, done, {self.low_level_agent_id: self.info}
 
     def _low_level_step(self, action):
-        # print("low level step", action)
         logger.debug("Low level agent step {}".format(action))
-        # print("Steps remaining", self.steps_remaining_at_level)
-        # self.steps_remaining_at_level -= 1
-        # cur_pos = tuple(self.cur_obs[0])
-        # goal_pos = self.env_gym._get_new_pos(cur_pos, self.high_level_pred)
-
         # Step in the actual env
         f_obs, f_rew, f_done, f_info = self.env_gym.step(action)
+        # Get the number of survived steps
         self.info["steps"] = f_info.get("steps", 0)
-        # new_pos = tuple(f_obs[0])
         self.cur_obs = f_obs
 
         # Calculate low-level agent observation and reward
-        # obs = {self.low_level_agent_id: [f_obs, self.high_level_pred]}
-        
         rew = {self.low_level_agent_id: f_rew}
 
         # Handle env termination & transitions back to higher level
@@ -432,14 +427,17 @@ class HierarchicalGridGym(MultiAgentEnv):
         if f_done:
             done["__all__"] = True
             logger.debug("high level final reward {}".format(f_rew))
-        # else:
-            # done[self.low_level_agent_id] = True # go to high level
+
+        one_hot_encoded_action = np.zeros(106)
+        one_hot_encoded_action[action] = 1
         rew = {self.low_level_agent_id: f_rew,
                self.high_level_agent_id: f_rew}
-        obs = {self.high_level_agent_id: f_obs}
-        # print("Low level done", done)
-        # print("Low level obs", obs)
-        # print("f_info", f_info)
+
+        obs = {self.high_level_agent_id: {
+                        "regular_obs": f_obs,
+                        "chosen_action": action}
+        }
+
         return obs, rew, done, {self.high_level_agent_id: self.info}
 
 class Grid_Gym_Greedy(Grid_Gym):
