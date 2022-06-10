@@ -42,21 +42,16 @@ env_config: &env_config_val
 
 choose_substation_agent_params: &choose_substation_agent_params
   model:  
-    fcnet_hiddens: [256,256, 256]
-    fcnet_activation: relu
-    custom_model : fcn
+    custom_model : choose_substation_model
     custom_model_config : 
-      use_parametric: False
-      env_obs_name: grid
+      share_actor: False
+
 
 choose_action_agent_params: &choose_action_agent_params
   model:  
-    fcnet_hiddens: [256,256, 256]
-    fcnet_activation: relu
-    custom_model : fcn
+    custom_model : choose_action_model
     custom_model_config : 
-      use_parametric: True
-      env_obs_name: grid
+      share_actor: False
 
 
 tune_config:

@@ -28,7 +28,7 @@ from ray.rllib.agents.ppo.ppo_torch_policy import PPOTorchPolicy
 
 from dotenv import load_dotenv # security keys
 
-from models.mlp import SimpleMlp
+from models.mlp import SimpleMlp, ChooseSubstationModel, ChooseActionModel
 from models.substation_module import RllibSubsationModule
 from models.hierarchical_agent import HierarchicalAgent, GreedySubModelNoWorker
 from grid2op_env.grid_to_gym import Grid_Gym, Grid_Gym_Greedy, HierarchicalGridGym
@@ -57,6 +57,8 @@ if __name__ == "__main__":
     ModelCatalog.register_custom_model("fcn", SimpleMlp)
     ModelCatalog.register_custom_model("substation_module", RllibSubsationModule)
     ModelCatalog.register_custom_model("hierarchical_agent", HierarchicalAgent)
+    ModelCatalog.register_custom_model("choose_substation_model", ChooseSubstationModel)
+    ModelCatalog.register_custom_model("choose_action_model", ChooseActionModel)
 
     register_env("Grid_Gym", Grid_Gym)
     register_env("Grid_Gym_Greedy", Grid_Gym_Greedy)

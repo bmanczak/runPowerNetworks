@@ -99,7 +99,7 @@ class SimpleMlp(TorchModelV2, nn.Module):
         self._last_flat_in = None
 
         print("THE hidden layers are: ", self._hidden_layers )
-
+        print("THE value branch  seperate is: ", self._value_branch_separate )
     
     def forward(self, input_dict: Dict[str, TensorType],
                 state: List[TensorType],
@@ -142,3 +142,207 @@ class SimpleMlp(TorchModelV2, nn.Module):
                 self._value_branch_separate(self._last_flat_in)).squeeze(1)
         else:
             return self._value_branch(self._features).squeeze(1)
+
+
+# The global, shared layer to be used by both models.
+SHARED_LAYERS_ACTOR = [
+    nn.Linear(152,256), nn.ReLU(inplace=True),
+    nn.Linear(256,256), nn.ReLU(inplace=True),
+    nn.Linear(256,256), nn.ReLU(inplace=True),
+    nn.Linear(256,256), nn.ReLU(inplace=True),
+]
+SHARED_LAYERS_VF = [
+    nn.Linear(152,256), nn.ReLU(inplace=True),
+    nn.Linear(256,256), nn.ReLU(inplace=True),
+    nn.Linear(256,256), nn.ReLU(inplace=True),
+    nn.Linear(256,256), nn.ReLU(inplace=True),
+    nn.Linear(256,1), nn.ReLU(inplace=True)
+     ]
+
+SHARED_ACTOR = nn.Sequential(*SHARED_LAYERS_ACTOR)
+SHARED_VF = nn.Sequential(*SHARED_LAYERS_VF)
+
+
+class ChooseSubstationModel(TorchModelV2, nn.Module):
+    """Generic fully connected network."""
+
+    def __init__(self, obs_space: gym.spaces.Space,
+                 action_space: gym.spaces.Space, num_outputs: int,
+                 model_config: ModelConfigDict, name: str):
+        """
+        Initialize the model.
+
+        Parameters:
+        ----------
+        obs_space: gym.spaces.Space
+            The observation space of the environment.
+        action_space: gym.spaces.Space
+            The action space of the environment.
+        num_outputs: int
+            The number of outputs of the model.
+
+        model_config: Dict
+            The configuration of the model as passed to the rlib trainer. 
+            Besides the rllib model parameters, should contain a sub-dict 
+            custom_model_config that stores the boolean for "use_parametric"
+            and "env_obs_name" for the name of the observation.
+        name: str
+            The name of the model captured in model_config["model_name"]
+        """
+        
+        # Call the parent constructor.
+        TorchModelV2.__init__(self, obs_space, action_space, num_outputs,
+                              model_config, name)
+        nn.Module.__init__(self)
+        
+        print("Hey the substation model")
+        self.share_actor = model_config["custom_model_config"].get("share_actor", True)
+
+        # Fetch the inner layers
+        if self.share_actor:
+            logging.info("Using global actor layers. Possibly sharing with the Action Model.")
+            self._hidden_layers = SHARED_ACTOR
+        else:
+            logging.info("Using separate actor layers.")
+            self._hidden_layers = nn.Sequential(*[
+                    nn.Linear(152,256), nn.ReLU(inplace=True),
+                    nn.Linear(256,256), nn.ReLU(inplace=True),
+                    nn.Linear(256,256), nn.ReLU(inplace=True),
+                    nn.Linear(256,256), nn.ReLU(inplace=True),
+                    ])
+
+        # Value function spec
+        self._value_branch = SHARED_VF
+        
+        # The logits layer
+        self._logits = nn.Linear(256, num_outputs)
+
+        # Holds the current "base" output (before logits layer).
+        self._features = None
+        # Holds the last input, in case value branch is separate.
+        self._last_flat_in = None
+
+        print("THE hidden layers are: ", self._hidden_layers )
+        print("THE value branch  seperate is: ", self._value_branch )
+
+    def forward(self, input_dict: Dict[str, TensorType],
+                state: List[TensorType],
+                seq_lens: TensorType):
+
+        regular_obs = torch.concat(
+                        [val for val in input_dict["obs"]["regular_obs"].values()], dim=1)
+        
+        self._last_flat_in = regular_obs
+        self._features = self._hidden_layers(self._last_flat_in)
+
+        logits = self._logits(self._features) 
+
+        if (torch.isnan(logits).any().item()) or (torch.isinf(logits).any().item()):
+            logging.warning(f"Logits contain NaN values")
+
+        return logits, state
+
+    def value_function(self) -> TensorType:
+        assert self._features is not None, "must call forward() first"
+        
+        vf_out = self._value_branch(self._last_flat_in).squeeze(1)
+        return vf_out
+
+
+class ChooseActionModel(TorchModelV2, nn.Module):
+    """Generic fully connected network."""
+
+    def __init__(self, obs_space: gym.spaces.Space,
+                 action_space: gym.spaces.Space, num_outputs: int,
+                 model_config: ModelConfigDict, name: str):
+        """
+        Initialize the model.
+
+        Parameters:
+        ----------
+        obs_space: gym.spaces.Space
+            The observation space of the environment.
+        action_space: gym.spaces.Space
+            The action space of the environment.
+        num_outputs: int
+            The number of outputs of the model.
+
+        model_config: Dict
+            The configuration of the model as passed to the rlib trainer. 
+            Besides the rllib model parameters, should contain a sub-dict 
+            custom_model_config that stores the boolean for "use_parametric"
+            and "env_obs_name" for the name of the observation.
+        name: str
+            The name of the model captured in model_config["model_name"]
+        """
+        
+         # Call the parent constructor.
+        TorchModelV2.__init__(self, obs_space, action_space, num_outputs,
+                              model_config, name)
+        nn.Module.__init__(self)
+        
+        print("Hey the action model!")
+        self.share_actor = model_config["custom_model_config"].get("share_actor", True)
+        # Fetch the inner layers
+        if self.share_actor:
+            logging.info("Using global actor layers. Make sure to set \
+                share_actor to True for the substation model.")
+            self._hidden_layers = SHARED_ACTOR
+        else:
+            logging.info("Using separate actor layers.")
+            self._hidden_layers = nn.Sequential(*[
+                    nn.Linear(160,256), nn.ReLU(inplace=True),
+                    nn.Linear(256,256), nn.ReLU(inplace=True),
+                    nn.Linear(256,256), nn.ReLU(inplace=True),
+                    nn.Linear(256,256), nn.ReLU(inplace=True),
+                    ])
+
+        # Value function spec
+        self._value_branch = SHARED_VF
+        
+        # The logits layer
+        if self.share_actor:
+            self._logits = nn.Linear(256 + 8, num_outputs)
+        else:
+            self._logits = nn.Linear(256, num_outputs)
+
+        # Holds the current "base" output (before logits layer).
+        self._features = None
+        # Holds the last input, in case value branch is separate.
+        self._last_flat_in = None
+        print("THE hidden layers are: ", self._hidden_layers )
+        print("THE value branch  seperate is: ", self._value_branch )
+
+    
+    def forward(self, input_dict: Dict[str, TensorType],
+                state: List[TensorType],
+                seq_lens: TensorType):
+
+        
+        regular_obs = torch.concat(
+                        [val for val in input_dict["obs"]["regular_obs"].values()], dim=1)
+        chosen_sub = input_dict["obs"]["chosen_substation"]
+        
+        inf_mask = torch.clamp(torch.log(input_dict["obs"]["action_mask"]), FLOAT_MIN, FLOAT_MAX)
+    
+        self._last_flat_in = regular_obs
+
+        if self.share_actor:
+            self._features = self._hidden_layers(self._last_flat_in)
+            self._features = torch.cat([self._features, chosen_sub], dim=1)
+        else: # then we can concat chosen sub at the beginning
+            obs_and_sub = torch.cat([regular_obs, chosen_sub], dim=1) # [BATCH_DIM, obs_dim]
+            self._features = self._hidden_layers(obs_and_sub) # [BATCH_DIM, obs_dim])
+
+        logits = self._logits(self._features) 
+        logits += inf_mask
+    
+        if (torch.isnan(logits).any().item()) or (torch.isinf(logits).any().item()):
+            logging.warning(f"Logits contain NaN values")
+        
+        return logits, state
+
+    def value_function(self) -> TensorType:
+        assert self._features is not None, "must call forward() first"
+        vf_out = self._value_branch(self._last_flat_in).squeeze(1)
+        return vf_out
