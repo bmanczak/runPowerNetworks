@@ -12,15 +12,18 @@ from collections import defaultdict
 from tqdm import tqdm
 from typing import Tuple, Optional
 
-from grid2op_env.grid_to_gym import Grid_Gym, Grid_Gym_Greedy, create_gym_env
+from grid2op_env.grid_to_gym import Grid_Gym, Grid_Gym_Greedy, HierarchicalGridGym, create_gym_env
 from evaluation.restore_agent import restore_agent
-from evaluation.rllib_to_grid import AgentThresholdEnv, AgentThresholdEnvGreedy, ClassicGreedyWrapper
-from models.mlp import SimpleMlp
+from evaluation.rllib_to_grid import AgentThresholdEnv, AgentThresholdEnvGreedy,\
+     ClassicGreedyWrapper, HierarchicalAgentThresholdEnv
+from models.mlp import SimpleMlp, ChooseSubstationModel, ChooseActionModel
 from models.greedy_agent import ClassicGreedyAgent
 
 
 np.random.seed(0)
 ModelCatalog.register_custom_model("fcn", SimpleMlp)
+ModelCatalog.register_custom_model("choose_substation_model", ChooseSubstationModel)
+ModelCatalog.register_custom_model("choose_action_model", ChooseActionModel)
 
 class EvaluationRunner:
     """
@@ -30,7 +33,8 @@ class EvaluationRunner:
 
     def __init__(self, agent_type:str, checkpoint_path:str, checkpoint_num = None,
              nb_episode:int = 1000, save_path:str = None, random_sample:bool = False, 
-             pbar:bool = False, greedy_env_config_agent_type:str = None, use_split: Optional[str] = "test"):
+             pbar:bool = False, greedy_env_config_agent_type:str = None,
+            use_split: Optional[str] = "test", hierarchical:bool = False):
 
         """
 
@@ -56,8 +60,11 @@ class EvaluationRunner:
             If True a progress bar will be displayed. Not recommended with Lisa.
         greedy_env_config_agent_type: str
             The type of the agenet from which the environment is fetched.
-        use_test_chron: str
-           Specifies if and what data split should be used.
+        use_split: str
+           Specifies what data split should be used. Options are ["train", "test", "val"]
+        hierarchical: bool
+            If agent to be restored is hierarchical
+            this must be True.
         """
 
         self.agent_type = agent_type
@@ -68,6 +75,7 @@ class EvaluationRunner:
         self.random_sample = random_sample
         self.pbar = pbar
         self.use_split = use_split
+        self.hierarchical = hierarchical
 
         self.modify_keys = None
 
@@ -124,7 +132,8 @@ class EvaluationRunner:
         agent, env_config = restore_agent(path = self.checkpoint_path,
                    checkpoint_num = self.checkpoint_num,
                    trainer_type= agent_type,
-                   modify_keys = self.modify_keys)
+                   modify_keys = self.modify_keys,
+                   hierachical=True)
         # if self.use_test_chron:
         #     self.env_config["env_name"] = "rte_case14_realistic_test"
         self.agent, self.env_config  = agent, env_config
@@ -134,12 +143,16 @@ class EvaluationRunner:
         Loads the envrionment wrapper.
         """
         env_config = self.env_config
-
-        if env_config.get("greedy_agent", False):
-            self.rllib_env = Grid_Gym_Greedy(env_config)
-        else:
-            self.rllib_env = Grid_Gym(env_config)
-        
+        print("IN LOAD ENV")
+        if self.hierarchical:
+            print("WRAPPING HIERARCHICAL ENV")
+            self.rllib_env = HierarchicalGridGym(env_config) 
+        else:       
+            if env_config.get("greedy_agent", False):
+                self.rllib_env = Grid_Gym_Greedy(env_config)
+            else:
+                self.rllib_env = Grid_Gym(env_config)
+            
         # Load the grid2op environment from wrapper
         self.env = self.rllib_env.org_env
     
@@ -149,12 +162,17 @@ class EvaluationRunner:
         """
        
         if self.agent_type in ["ppo", "sac"]:
-            if self.env_config.get("greedy_agent", False): # substation + greedy
-                self.wrapped_agent = AgentThresholdEnvGreedy(self.rllib_env, self.agent,
-                                rho_threshold = self.env_config["rho_threshold"])
+
+            if self.hierarchical:
+                self.wrapped_agent = HierarchicalAgentThresholdEnv(self.rllib_env, self.agent,
+                                rho_threshold = self.env_config["rho_threshold"]) 
             else:
-                self.wrapped_agent = AgentThresholdEnv(self.rllib_env, self.agent,
-                                rho_threshold = self.env_config["rho_threshold"])
+                if self.env_config.get("greedy_agent", False): # substation + greedy
+                    self.wrapped_agent = AgentThresholdEnvGreedy(self.rllib_env, self.agent,
+                                    rho_threshold = self.env_config["rho_threshold"])
+                else:
+                    self.wrapped_agent = AgentThresholdEnv(self.rllib_env, self.agent,
+                                    rho_threshold = self.env_config["rho_threshold"])
         else: # greedy
             print("Using totally greedy agent")
             greedy_agent = self.instanciate_greedy(self.env_config)
@@ -277,6 +295,7 @@ if "__main__" == __name__:
     parser.add_argument("--pbar", type=bool, default=True, help="Use a progress bar")
     parser.add_argument("--greedy_env_config_agent_type", type=str, default="ppo", help="The type of the agenet from which the environment is fetched.")
     parser.add_argument("--use_split", type=str, default=True, choices = ["train", "val", "test", None] ,help="Whether a split of the data should be used")
+    parser.add_argument("--hierarchical", type = bool, default = False, help = "Whether the restored agent is hierarchical")
     
     args = parser.parse_args()
 

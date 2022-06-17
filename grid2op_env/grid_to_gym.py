@@ -351,6 +351,7 @@ class HierarchicalGridGym(MultiAgentEnv):
         self._skip_env_checking = True
         
         self.env_gym = Grid_Gym(env_config)
+        self.org_env = self.env_gym.org_env
         
         self.low_level_agent_id = "choose_action_agent"
         self.high_level_agent_id = "choose_substation_agent"
@@ -396,12 +397,15 @@ class HierarchicalGridGym(MultiAgentEnv):
         else:
             return self._low_level_step(list(action_dict.values())[0])
 
-    def _high_level_step(self, action):
+    def _high_level_step(self, action, cur_obs = None):
         logger.debug("High level agent sets goal")
         self.high_level_pred = action       
         # Create a mask using the predicited action
         action_mask = self.map_sub_to_mask()
-
+        
+        if cur_obs is not None:
+            self.cur_obs = cur_obs
+            
         obs = {self.low_level_agent_id: {
             "action_mask": action_mask,
             "regular_obs":self.cur_obs ,

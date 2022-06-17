@@ -3,16 +3,23 @@ import re
 import json
 import os
 import logging
+import numpy as np
+import gym
 
+from train_hierarchical import policy_mapping_fn
+
+from ray.rllib.agents.ppo.ppo_torch_policy import PPOTorchPolicy
+from gym.spaces import Discrete, Box
 from ray.rllib.agents import ppo, sac # import the type of agents
-from grid2op_env.grid_to_gym import Grid_Gym
+from grid2op_env.grid_to_gym import Grid_Gym, HierarchicalGridGym
 from typing import Tuple, Union, Optional
+
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 def restore_agent(trainer_type:str, path:str, checkpoint_num:Optional[int] = None,
-                 modify_keys: Optional[dict] = None, ) \
+                 modify_keys: Optional[dict] = None, hierachical = False) \
                         -> Tuple[Union[ppo.PPOTrainer, sac.SACTrainer], dict]:
     """
     Function that restores the agent from tune checkpointwith 
@@ -33,6 +40,8 @@ def restore_agent(trainer_type:str, path:str, checkpoint_num:Optional[int] = Non
         the checkpoint with the highest number is restored.
     modify_keys: dict (Optional)
         Keys to add/change in the config.
+    hierarchical: bool (Optional)
+        If True, the agent is restored with the hierarchical spec.
     
     Returns:
     --------
@@ -54,6 +63,35 @@ def restore_agent(trainer_type:str, path:str, checkpoint_num:Optional[int] = Non
     config_params = json.load(open(os.path.join(path, "params.json")))
     config_params.pop("callbacks", None)
     
+
+    if hierachical:
+        grid_gym = Grid_Gym(config_params["env_config"])
+        config_params["multiagent"]["policies"]["choose_substation_agent"] = (
+        PPOTorchPolicy,
+        # grid_gym.observation_space,
+        gym.spaces.Dict({
+            "regular_obs": grid_gym.observation_space,
+            "chosen_action": Discrete(grid_gym.action_space.n),
+        }) ,
+        Discrete(8),
+        config_params["multiagent"]["policies"]["choose_substation_agent"][3]
+        
+    )
+
+    config_params["multiagent"]["policies"]["choose_action_agent"] = (
+        PPOTorchPolicy,
+        gym.spaces.Dict({
+            "action_mask":Box(0, 1, shape=(grid_gym.action_space.n, ), dtype=np.float32),
+            "regular_obs": grid_gym.observation_space,
+            "chosen_substation": Discrete(8)
+        }) ,
+        grid_gym.action_space,
+        config_params["multiagent"]["policies"]["choose_action_agent"][3]
+    )
+
+    config_params["multiagent"]["policy_mapping_fn"] = policy_mapping_fn
+
+
     # Optionally modify the keys 
     if modify_keys is not None:
         for key, val in modify_keys.items():
@@ -80,8 +118,12 @@ def restore_agent(trainer_type:str, path:str, checkpoint_num:Optional[int] = Non
     logger.info(f"Restoring checkpoint {checkpoint_num} from {checkpoint_path}")
 
     if trainer_type == "ppo":
-        agent = ppo.PPOTrainer(env=Grid_Gym,
-            config = config_params)
+        if hierachical:
+            agent = ppo.PPOTrainer(env = HierarchicalGridGym,
+                        config=config_params)
+        else:
+            agent = ppo.PPOTrainer(env=Grid_Gym,
+                config = config_params)
     elif trainer_type == "sac":
         agent = sac.SACTrainer(env=Grid_Gym,
             config = config_params)
