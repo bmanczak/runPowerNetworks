@@ -36,13 +36,15 @@ class MaxNotImprovedStopper(Stopper):
                  percent_improve: float = 0.001, # 0.1 percent improvement needed
                  grace_period: int = 400,
                  metric_threshold: Optional[float] = None,
-                 mode: Optional[str] = None):
+                 mode: Optional[str] = None,
+                 no_stop_if_val = None):
 
         self._metric = metric
         self._mode = mode
         self._num_iters_no_improvement = num_iters_no_improvement
         self._current_max_trial = defaultdict(lambda: float("-inf"))
         self._iters_no_improvement = 0
+        self._no_stop_if_val = float("inf") if no_stop_if_val is None else no_stop_if_val
 
         self._percent_improve = percent_improve
         self._grace_period = grace_period
@@ -82,11 +84,13 @@ class MaxNotImprovedStopper(Stopper):
             elif self._mode == "max" and \
                     metric_result < self._metric_threshold:
                 return False
-        # If max has no been surpased in num_iters_no_improvement, early stop.
-        if self._num_iters_no_improvement < self._iter_no_improv[trial_id]:
-            logger.info(f"Terminating the trial {trial_id} early with max value of {self._metric}: {self._current_max_trial[trial_id]} \
-                after {self._iter_no_improv[trial_id]} iterations without improvement.") 
-            return True 
+        # Only early stop if the current max has not surpassed _no_stop_if_val     
+        if self._current_max_trial[trial_id] < self._no_stop_if_val:
+             # If max has no been surpased in num_iters_no_improvement, early stop.
+            if self._num_iters_no_improvement < self._iter_no_improv[trial_id]:
+                logger.info(f"Terminating the trial {trial_id} early with max value of {self._metric}: {self._current_max_trial[trial_id]} \
+                    after {self._iter_no_improv[trial_id]} iterations without improvement.") 
+                return True 
         return False # if else, return false 
 
     def stop_all(self):

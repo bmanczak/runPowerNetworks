@@ -156,7 +156,8 @@ if __name__ == "__main__":
             MaximumIterationStopper(max_iter = args.num_iters),
             MaxNotImprovedStopper(metric = "episode_reward_mean",
                                     grace_period = args.grace_period, 
-                                    num_iters_no_improvement = args.num_iters_no_improvement)
+                                    num_iters_no_improvement = args.num_iters_no_improvement,
+                                         no_stop_if_val = 5500)
                                     )
         
         analysis = ray.tune.run(
