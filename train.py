@@ -94,19 +94,6 @@ if __name__ == "__main__":
         config["env_config"]["with_opponent"] = True
         config["evaluation_config"]["env_config"]["with_opponent"] = True
     
-    pretrained_model_config = config["model"]["custom_model_config"]\
-                    .get("pretrained_model_config", None)
-    print(pretrained_model_config)
-    if pretrained_model_config is not None:
-        # pretrained_substation_model = GreedySubModel(**pretrained_model_config)
-        pretrained_substation_model = GreedySubModelNoWorker(model= pickle.load(open(pretrained_model_config["model_path"], "rb")),
-                                                            dist_class=pickle.load(open(pretrained_model_config["dist_class_path"], "rb")),
-                                                            env_config= pickle.load(open(pretrained_model_config["env_config_path"], "rb")),
-                                                            num_to_sub=pickle.load(open(pretrained_model_config["num_to_sub_path"], "rb")))
-
-        config["model"]["custom_model_config"]["pretrained_substation_model"] = pretrained_substation_model
-        config["model"]["custom_model_config"].\
-            pop("pretrained_model_config", None) # pretrained model extracted
     
     if args.algorithm == "ppo":
         trainer = ppo.PPOTrainer
@@ -120,9 +107,9 @@ if __name__ == "__main__":
         reporter = CLIReporter()
         stopper = CombinedStopper(
             MaximumIterationStopper(max_iter = args.num_iters),
-            MaxNotImprovedStopper(metric = "episode_reward_mean",
-                                    grace_period = args.grace_period, 
-                                    num_iters_no_improvement = args.num_iters_no_improvement)
+            # MaxNotImprovedStopper(metric = "episode_reward_mean",
+            #                         grace_period = args.grace_period, 
+            #                         num_iters_no_improvement = args.num_iters_no_improvement)
                                     )
         
         analysis = ray.tune.run(
@@ -135,11 +122,11 @@ if __name__ == "__main__":
                 stop = stopper,
                 checkpoint_at_end=True,
                 num_samples = args.num_samples,
-                # callbacks=[WandbLoggerCallback(
-                #             project=args.project_name,
-                #             group = args.group,
-                #             api_key =  WANDB_API_KEY,
-                #             log_config=True)],
+                callbacks=[WandbLoggerCallback(
+                            project=args.project_name,
+                            group = args.group,
+                            api_key =  WANDB_API_KEY,
+                            log_config=True)],
                 # loggers= [CustomTBXLogger],
                 keep_checkpoints_num = 5,
                 checkpoint_score_attr="evaluation/episode_reward_mean",
