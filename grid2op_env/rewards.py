@@ -3,8 +3,6 @@ from grid2op.Reward import L2RPNReward
 from grid2op.dtypes import dt_float
 
 from grid2op.Reward.BaseReward import BaseReward
-
-
 class ScaledL2RPNReward(L2RPNReward):
     """
     Scaled version of L2RPNReward such that the reward falls between 0 and 1.

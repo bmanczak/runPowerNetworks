@@ -28,8 +28,6 @@ from ray.tune.stopper import CombinedStopper, MaximumIterationStopper
 from dotenv import load_dotenv # security keys
 
 from models.mlp import SimpleMlp
-from models.substation_module import RllibSubsationModule
-from models.hierarchical_agent import HierarchicalAgent, GreedySubModelNoWorker
 from grid2op_env.grid_to_gym import Grid_Gym, Grid_Gym_Greedy
 from experiments.callback import CustomTBXLogger, LogDistributionsCallback
 from experiments.preprocess_config import preprocess_config, get_loader
@@ -53,9 +51,7 @@ if __name__ == "__main__":
     np.random.seed(2137)
     torch.manual_seed(2137)
     ModelCatalog.register_custom_model("fcn", SimpleMlp)
-    ModelCatalog.register_custom_model("substation_module", RllibSubsationModule)
-    ModelCatalog.register_custom_model("hierarchical_agent", HierarchicalAgent)
-
+    
     register_env("Grid_Gym", Grid_Gym)
     register_env("Grid_Gym_Greedy", Grid_Gym_Greedy)
     ray.shutdown()
@@ -122,11 +118,11 @@ if __name__ == "__main__":
                 stop = stopper,
                 checkpoint_at_end=True,
                 num_samples = args.num_samples,
-                callbacks=[WandbLoggerCallback(
-                            project=args.project_name,
-                            group = args.group,
-                            api_key =  WANDB_API_KEY,
-                            log_config=True)],
+                # callbacks=[WandbLoggerCallback(
+                #             project=args.project_name,
+                #             group = args.group,
+                #             api_key =  WANDB_API_KEY,
+                #             log_config=True)],
                 # loggers= [CustomTBXLogger],
                 keep_checkpoints_num = 5,
                 checkpoint_score_attr="evaluation/episode_reward_mean",
