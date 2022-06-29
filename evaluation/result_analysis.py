@@ -391,10 +391,11 @@ def compile_table_df(data_per_algorithm:Dict) -> pd.DataFrame:
         df_dict[name] = {}
         # Number of unique actions
         all_topos = np.concatenate(list(data_per_algorithm[name]["agent_info"].topo_vects.values()))
-        unique_topos = np.unique(all_topos, axis=0 )
+        unique_topos, topo_count  = np.unique(all_topos, axis=0, return_counts=True )
+        everything_disconnected_mask = (unique_topos>=1).any(axis=1) # filter everything disconneced case
+        appear_more_than_once_mask = topo_count > 1 # filter the just before collapse topologies
         # Filter out the disconnected lines 
-        unique_topos = unique_topos[(unique_topos>=1).all(axis=1)]
-        df.loc[name, "num_unique_topos"] = unique_topos.shape[0]
+        df.loc[name, "num_unique_topos"] = unique_topos[everything_disconnected_mask & appear_more_than_once_mask].shape[0]
     
         # Topological depth
         mean_topo_depth = defaultdict(list)

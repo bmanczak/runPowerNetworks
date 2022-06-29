@@ -10,7 +10,7 @@ mapper = {
     },
     "env":{
         "Grid_Gym": Grid_Gym,
-        "HierarchicalGridGym": HierarchicalGridGym
+        "HierarchicalGridGym": HierarchicalGridGym,
     }
 }
 def preprocess_config(config):
@@ -22,7 +22,14 @@ def preprocess_config(config):
         config (dict): parsed YAML config file
     """
     if "callbacks" in config["tune_config"]:
-        config["tune_config"]["callbacks"] = mapper["callbacks"][config["tune_config"]["callbacks"]]
+        if isinstance(config["tune_config"]["callbacks"], list):
+            callbacks_lst = []
+            for callback_name in config["tune_config"]["callbacks"]:
+                callbacks_lst.append(mapper["callbacks"][callback_name])  
+            config["tune_config"]["callbacks"] = callbacks_lst
+        else: # single str 
+            config["tune_config"]["callbacks"] = mapper["callbacks"][config["tune_config"]["callbacks"]]
+        
     try:
         config["tune_config"]["env"] = mapper["env"][config["tune_config"]["env"]]
     except: # if the env is not in the mapper, it is an already registerd env
