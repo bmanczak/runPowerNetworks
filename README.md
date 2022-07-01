@@ -115,8 +115,12 @@ df = compile_table_df(data_per_algorithm)
 ### Repository overview 
 
 `evaluation` contains the code for benchmarking trained agents
+
 `experiments` contains the specification of the model hyperparameters and custom callbacks 
+
 `grid2op_env` contains the environment wrappers, train/test/val split, and data used to scale the observations
+
 `models` contains the code for the torch models used in the experiments
+
 `notebooks` contains miscellaneous notebooks used in the course of development and evaluation. Notably `sub_node_model.ipnyb` contains an alpha version of a Graph Neural Network (GNN) based policy.
  
