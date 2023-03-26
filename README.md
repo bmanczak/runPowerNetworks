@@ -1,11 +1,10 @@
-# Grid topology configuration using (hierarchical) reinforcement learning
+# Hierarchical Reinforcement Learning for Power Network Topology Control
 
-This repository contains the code for experiments conducted for my master thesis realized at *Amsterdam Machine Learning* Lab and *TenneT*.
-
+This repository contains the code for experiments conducted for my master thesis realized at Amsterdam Machine Learning Lab and TenneT.
 
 ## Paper
 
-Please see the paper **Grid topology configuration using (hierarchical) reinforcement learning** for more details. If this code is useful please cite our paper:
+Please see the paper **Hierarchical Reinforcement Learning for Power Network Topology Control** (link coming soon) for more details. If this code is useful please cite our paper:
 
 *BibTeX coming soon*
 
