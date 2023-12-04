@@ -5,9 +5,16 @@ This repository contains the code for experiments conducted for my master thesis
 ## Paper
 
 Please see the paper **Hierarchical Reinforcement Learning for Power Network Topology Control** (link coming soon) for more details. If this code is useful please cite our paper:
-
-*BibTeX coming soon*
-
+```
+@misc{manczak2023hierarchical,
+      title={Hierarchical Reinforcement Learning for Power Network Topology Control}, 
+      author={Blazej Manczak and Jan Viebahn and Herke van Hoof},
+      year={2023},
+      eprint={2311.02129},
+      archivePrefix={arXiv},
+      primaryClass={cs.LG}
+}
+```
 ### Dependencies 
 
 The `env.yml` file can be used to install the dependencies. 
