@@ -4,7 +4,7 @@ This repository contains the code for experiments conducted for my master thesis
 
 ## Paper
 
-Please see the paper **Hierarchical Reinforcement Learning for Power Network Topology Control** (link coming soon) for more details. If this code is useful please cite our paper:
+Please see the paper [**Hierarchical Reinforcement Learning for Power Network Topology Control**](https://arxiv.org/abs/2311.02129)  for more details. If this code is useful please cite our paper:
 ```
 @misc{manczak2023hierarchical,
       title={Hierarchical Reinforcement Learning for Power Network Topology Control}, 
